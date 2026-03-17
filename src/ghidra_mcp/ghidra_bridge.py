@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import math
 import os
 from pathlib import Path
 from typing import Any
-
-import pyghidra
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +89,16 @@ class GhidraBridge:
             return
 
         logger.info("Starting PyGhidra JVM...")
-        pyghidra.start(vm_args=self._vm_args)
+        from pyghidra.launcher import HeadlessPyGhidraLauncher  # type: ignore[import]
+
+        launcher = HeadlessPyGhidraLauncher()
+        launcher.add_vmargs(*self._vm_args)
+        launcher.start()
         self._started = True
 
         self.project_dir.mkdir(parents=True, exist_ok=True)
 
-        from ghidra import GhidraProject  # type: ignore[import]
+        from ghidra.base.project import GhidraProject  # type: ignore[import]
 
         project_path = self.project_dir / self.project_name
         gpr_file = project_path.with_suffix(".gpr")
@@ -110,7 +111,7 @@ class GhidraBridge:
         else:
             logger.info("Creating new project: %s", self.project_name)
             self._project = GhidraProject.createProject(
-                str(self.project_dir), self.project_name
+                str(self.project_dir), self.project_name, True
             )
 
         logger.info("Ghidra project ready: %s", self.project_name)
@@ -138,7 +139,7 @@ class GhidraBridge:
             from ghidra.program.util import GhidraProgramUtilities  # type: ignore[import]
 
             self._project.analyze(program)
-            GhidraProgramUtilities.setAnalyzedFlag(program, True)
+            GhidraProgramUtilities.markProgramAnalyzed(program)
 
         self._programs[binary_name] = program
         self._init_decompiler(binary_name, program)
@@ -347,7 +348,7 @@ class GhidraBridge:
     ) -> dict[str, Any]:
         """List defined strings in a binary."""
         program = self.get_program(binary_name)
-        from ghidra.program.model.data import StringDataType  # type: ignore[import]
+        from ghidra.program.model.data import AbstractStringDataType  # type: ignore[import]
 
         listing = program.getListing()
         strings = []
@@ -355,7 +356,7 @@ class GhidraBridge:
         idx = 0
 
         for data in listing.getDefinedData(True):
-            if not isinstance(data.getDataType(), StringDataType) and \
+            if not isinstance(data.getDataType(), AbstractStringDataType) and \
                "string" not in str(data.getDataType()).lower():
                 continue
 
@@ -411,18 +412,16 @@ class GhidraBridge:
         """List imported symbols."""
         program = self.get_program(binary_name)
         sym_table = program.getSymbolTable()
-        from ghidra.program.model.symbol import SymbolType  # type: ignore[import]
-
         imports = []
         for sym in sym_table.getExternalSymbols():
             name = sym.getName()
             if filter_name and filter_name.lower() not in name.lower():
                 continue
 
-            ext_loc = sym.getExternalLocation() if hasattr(sym, 'getExternalLocation') else None
             library = None
-            if ext_loc:
-                library = str(ext_loc.getLibraryName())
+            parent_ns = sym.getParentNamespace()
+            if parent_ns is not None:
+                library = parent_ns.getName()
 
             imports.append({
                 "name": name,
@@ -501,15 +500,9 @@ class GhidraBridge:
 
         from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
 
-        # Convert hex pattern to Ghidra search format
-        # Ghidra uses '.' for wildcard nibbles
-        ghidra_pattern = hex_pattern.replace("??", "..")
-        ghidra_pattern = ghidra_pattern.replace(" ", "")
-
         start_addr = memory.getMinAddress()
         results = []
 
-        from ghidra.program.model.mem import MemoryBytePatternSearcher  # type: ignore[import]
         # Use simple iteration approach with findBytes
         addr = start_addr
         search_bytes_arr = []
@@ -529,8 +522,12 @@ class GhidraBridge:
             i += 2
 
         import jarray  # type: ignore[import]
-        search_bytes_j = jarray.array([x & 0xFF for x in search_bytes_arr], 'b')
-        mask_bytes_j = jarray.array([x & 0xFF for x in mask_arr], 'b')
+        search_bytes_j = jarray.array(
+            [v - 256 if v > 127 else v for v in search_bytes_arr], 'b'
+        )
+        mask_bytes_j = jarray.array(
+            [v - 256 if v > 127 else v for v in mask_arr], 'b'
+        )
 
         monitor = ConsoleTaskMonitor()
         addr = memory.findBytes(
@@ -557,6 +554,8 @@ class GhidraBridge:
         program = self.get_program(binary_name)
         memory = program.getMemory()
 
+        import jarray  # type: ignore[import]
+
         sections = []
         overall_bytes = bytearray()
 
@@ -568,15 +567,16 @@ class GhidraBridge:
             if size == 0:
                 continue
 
-            # Read block bytes
-            data = bytearray(size)
+            # Read block bytes — must use Java byte array for getBytes()
+            data = jarray.zeros(size, 'b')
             try:
                 block.getBytes(block.getStart(), data)
             except Exception:
                 continue
 
-            entropy = self._shannon_entropy(data)
-            overall_bytes.extend(data)
+            py_data = bytes(v & 0xFF for v in data)
+            entropy = self._shannon_entropy(py_data)
+            overall_bytes.extend(py_data)
 
             sections.append({
                 "name": block.getName(),
@@ -664,10 +664,11 @@ class GhidraBridge:
             # Calculate entropy for initialized blocks
             entropy = 0.0
             if block.isInitialized() and size > 0:
-                data = bytearray(size)
+                import jarray  # type: ignore[import]
+                data = jarray.zeros(size, 'b')
                 try:
                     block.getBytes(block.getStart(), data)
-                    entropy = self._shannon_entropy(data)
+                    entropy = self._shannon_entropy(bytes(v & 0xFF for v in data))
                 except Exception:
                     pass
 
