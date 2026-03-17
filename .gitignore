@@ -1,0 +1,79 @@
+# Secrets & credentials — never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.secret
+credentials.json
+secrets.json
+auth.json
+token.json
+
+# Python bytecode & packaging
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+src/*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv / pip
+uv.lock
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+*.cover
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Ghidra project data (generated, large)
+projects/
+*.gpr
+*.rep/
+*.lock
+
+# Malware samples / input binaries — never commit untrusted binaries
+binaries/
+samples/
+
+# Docker
+.docker/
+
+# Misc
+*.log
+core
+core.*
+
+
+.claude

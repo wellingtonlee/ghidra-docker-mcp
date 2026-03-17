@@ -1,0 +1,27 @@
+services:
+  ghidra-mcp:
+    build: .
+    stdin_open: true
+    volumes:
+      - ./binaries:/home/ghidra/binaries:ro
+      - ghidra-projects:/home/ghidra/projects
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    environment:
+      - GHIDRA_ANALYSIS_TIMEOUT_SECONDS=300
+      - GHIDRA_MAX_HEAP=2g
+
+volumes:
+  ghidra-projects:
+
+# Claude Desktop configuration:
+# {
+#   "mcpServers": {
+#     "ghidra": {
+#       "command": "docker",
+#       "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"]
+#     }
+#   }
+# }
