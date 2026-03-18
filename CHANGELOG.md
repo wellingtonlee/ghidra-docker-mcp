@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.2.2] - 2026-03-17
+
+### Fixed
+
+- `import_binary` crashed on arm64 Linux with `Failed to import 'ghidra.util.Platform'`. The `Platform` Java enum's static initializer fails when Ghidra has no matching enum value for the host architecture. Since the import is only used for startup logging, it is now wrapped in `try/except` with a warning that includes `arch`, `JAVA_HOME`, and `GHIDRA_INSTALL_DIR`.
+- **BLOCKING**: Decompiler not found on Apple Silicon (arm64). `JAVA_HOME` was hardcoded to `java-21-openjdk-amd64` in the Dockerfile, breaking JVM init on arm64 and preventing Ghidra's `Application` framework from registering modules. Now uses an architecture-neutral symlink.
+- Dockerfile build-time verification: fails fast if the decompiler binary is missing for the target architecture instead of silently continuing.
+- Dockerfile now builds the decompiler from source on arm64 when pre-built binary is absent (Ghidra releases don't include `linux_arm_64` binaries).
+- `entrypoint.sh`: auto-detects `JAVA_HOME` at runtime if the configured path doesn't exist.
+- `ghidra_bridge.py`: logs `Platform` and `JAVA_HOME` at startup; decompiler-not-found errors now include platform, expected path, and available `os/` directories.
+
+## [0.2.1] - 2026-03-17
+
+### Fixed
+
+- **BLOCKING**: `get_sections` and `get_entropy` failed with "Class must be array type" because `block.getSize()` returns a JPype-wrapped Java `long`. `_java_byte_array` now casts non-sequence args to Python `int`.
+- **BLOCKING**: `get_sections`, `get_entropy`, `search_bytes`, `get_memory_bytes` crashed with `No module named 'jarray'`. PyGhidra 3.0 uses JPype (CPython), not Jython — replaced all `jarray` usage with `jpype.JArray(jpype.JByte)`.
+- **BLOCKING**: `decompile_function` silently failed (empty error message). `DecompileOptions` were never set on `DecompInterface`, and `openProgram()` return value was unchecked. Now sets options and verifies program opened successfully.
+- **BLOCKING**: `decompile_function` raised "Decompiler failed to open program" even on success. JPype returns `None` for Java `synchronized boolean` methods; `not None` evaluated `True`, triggering a false error. Now treats `None` as success and only fails on explicit `False`. Also loads program-specific decompiler settings via `grabFromProgram()` and includes `getLastMessage()` diagnostics on real failures.
+- **BLOCKING**: `decompile_function` failed with "Could not find decompiler executable" because `HeadlessPyGhidraLauncher` was created without an explicit `install_dir`, relying on auto-detection that fails when PyGhidra is installed from PyPI. Now passes `GHIDRA_INSTALL_DIR` env var to the launcher. Dockerfile also `chmod +x`es the native decompiler binaries after extraction.
+- Improved decompilation error messages to include function name and binary name.
+- `import_binary` no longer fails when decompiler init fails — decompiler is now best-effort during import and retried lazily on first `decompile_function` call.
+
+## [0.2.0] - 2026-03-17
+
+### Added
+
+- **`get_memory_bytes`** — Read raw bytes from an address with hex/ascii output and section identification.
+- **`search_instructions`** — Regex search over disassembly mnemonics and operands.
+- **`get_function_summary`** — Rich function metadata (parameters, callees, callers, referenced strings, cyclomatic complexity) without decompilation.
+- **`get_basic_blocks`** — Control-flow graph basic blocks with instructions and successor/predecessor edges.
+- **`get_call_graph`** — Function call graph with BFS depth control, supporting callees/callers/both directions.
+- Tests for all 5 new tools plus binary-not-found edge cases.
+
 ## [0.1.3] - 2026-03-17
 
 ### Fixed

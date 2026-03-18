@@ -175,6 +175,153 @@ class MockGhidraBridge:
             },
         ]
 
+    def get_memory_bytes(
+        self, binary_name: str, address: str, size: int = 256
+    ) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        size = min(size, 4096)
+        # Return a mock MZ header
+        raw = b"MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff\x00\x00"
+        data = raw[:size] if size <= len(raw) else raw + b"\x00" * (size - len(raw))
+        hex_str = data.hex()
+        ascii_str = "".join(chr(b) if 32 <= b < 127 else "." for b in data)
+        return {
+            "address": address,
+            "size": size,
+            "hex": hex_str,
+            "ascii": ascii_str,
+            "containing_section": ".text",
+        }
+
+    def search_instructions(
+        self,
+        binary_name: str,
+        mnemonic_pattern: str,
+        operand_pattern: str | None = None,
+        max_results: int = 100,
+    ) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        import re
+        matches = [
+            {"address": "0x00101010", "mnemonic": "XOR", "operands": "EAX,EAX",
+             "full_text": "XOR EAX,EAX", "function": "main"},
+            {"address": "0x00101050", "mnemonic": "XOR", "operands": "EDX,ECX",
+             "full_text": "XOR EDX,ECX", "function": "main"},
+        ]
+        compiled = re.compile(mnemonic_pattern, re.IGNORECASE)
+        matches = [m for m in matches if compiled.search(m["mnemonic"])]
+        if operand_pattern:
+            op_re = re.compile(operand_pattern, re.IGNORECASE)
+            matches = [m for m in matches if op_re.search(m["operands"])]
+        return {
+            "pattern": mnemonic_pattern,
+            "operand_pattern": operand_pattern,
+            "matches": matches[:max_results],
+            "total": len(matches),
+        }
+
+    def get_function_summary(self, binary_name: str, name_or_addr: str) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        return {
+            "name": name_or_addr,
+            "address": "0x00101000",
+            "size": 120,
+            "calling_convention": "__stdcall",
+            "signature": f"int {name_or_addr}(int argc, char ** argv)",
+            "parameters": [
+                {"name": "argc", "type": "int", "storage": "EDI"},
+                {"name": "argv", "type": "char **", "storage": "RSI"},
+            ],
+            "return_type": "int",
+            "local_variable_count": 3,
+            "stack_frame_size": 48,
+            "is_thunk": False,
+            "called_functions": [
+                {"name": "printf", "address": "0x00102000"},
+                {"name": "init_payload", "address": "0x00101200"},
+                {"name": "exit", "address": "0x00102010"},
+            ],
+            "calling_functions": [
+                {"name": "_start", "address": "0x00100000"},
+            ],
+            "referenced_strings": [
+                {"address": "0x00200000", "value": "Hello, World!"},
+                {"address": "0x00200020", "value": "Error: %d"},
+            ],
+            "instruction_count": 35,
+            "cyclomatic_complexity": 4,
+        }
+
+    def get_basic_blocks(self, binary_name: str, name_or_addr: str) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        return {
+            "function": name_or_addr,
+            "address": "0x00101000",
+            "total_blocks": 3,
+            "blocks": [
+                {
+                    "start": "0x00101000", "end": "0x00101010", "size": 16,
+                    "instruction_count": 4,
+                    "instructions": [
+                        {"address": "0x00101000", "text": "PUSH RBP"},
+                        {"address": "0x00101001", "text": "MOV RBP,RSP"},
+                        {"address": "0x00101004", "text": "CMP EDI,0x1"},
+                        {"address": "0x00101007", "text": "JLE 0x00101020"},
+                    ],
+                    "successors": ["0x00101010", "0x00101020"],
+                    "predecessors": [],
+                },
+                {
+                    "start": "0x00101010", "end": "0x0010101f", "size": 16,
+                    "instruction_count": 3,
+                    "instructions": [
+                        {"address": "0x00101010", "text": "MOV EDI,0x00200000"},
+                        {"address": "0x00101015", "text": "CALL printf"},
+                        {"address": "0x0010101a", "text": "JMP 0x00101030"},
+                    ],
+                    "successors": [],
+                    "predecessors": ["0x00101000"],
+                },
+                {
+                    "start": "0x00101020", "end": "0x0010102f", "size": 16,
+                    "instruction_count": 3,
+                    "instructions": [
+                        {"address": "0x00101020", "text": "MOV EDI,0x00200020"},
+                        {"address": "0x00101025", "text": "CALL puts"},
+                        {"address": "0x0010102a", "text": "JMP 0x00101030"},
+                    ],
+                    "successors": [],
+                    "predecessors": ["0x00101000"],
+                },
+            ],
+        }
+
+    def get_call_graph(
+        self,
+        binary_name: str,
+        name_or_addr: str,
+        depth: int = 2,
+        direction: str = "callees",
+    ) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        return {
+            "root": name_or_addr,
+            "root_address": "0x00101000",
+            "direction": direction,
+            "depth": depth,
+            "nodes": [
+                {"name": name_or_addr, "address": "0x00101000", "depth": 0},
+                {"name": "init_payload", "address": "0x00101200", "depth": 1},
+                {"name": "printf", "address": "0x00102000", "depth": 1},
+            ],
+            "edges": [
+                {"from": name_or_addr, "to": "init_payload"},
+                {"from": name_or_addr, "to": "printf"},
+            ],
+            "total_nodes": 3,
+            "total_edges": 2,
+        }
+
     def close(self) -> None:
         self._programs.clear()
 

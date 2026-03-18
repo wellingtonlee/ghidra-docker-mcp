@@ -91,10 +91,24 @@ class GhidraBridge:
         logger.info("Starting PyGhidra JVM...")
         from pyghidra.launcher import HeadlessPyGhidraLauncher  # type: ignore[import]
 
-        launcher = HeadlessPyGhidraLauncher()
+        install_dir = os.environ.get("GHIDRA_INSTALL_DIR")
+        launcher = HeadlessPyGhidraLauncher(install_dir=install_dir)
         launcher.add_vmargs(*self._vm_args)
         launcher.start()
         self._started = True
+
+        try:
+            from ghidra.util import Platform  # type: ignore[import]
+            logger.info("Platform: %s, JAVA_HOME: %s", Platform.CURRENT_PLATFORM, os.environ.get("JAVA_HOME", "<not set>"))
+        except Exception:
+            import platform as _platform
+            logger.warning(
+                "Could not import ghidra.util.Platform (arch=%s). "
+                "JAVA_HOME: %s, GHIDRA_INSTALL_DIR: %s",
+                _platform.machine(),
+                os.environ.get("JAVA_HOME", "<not set>"),
+                os.environ.get("GHIDRA_INSTALL_DIR", "<not set>"),
+            )
 
         self.project_dir.mkdir(parents=True, exist_ok=True)
 
@@ -142,16 +156,51 @@ class GhidraBridge:
             GhidraProgramUtilities.markProgramAnalyzed(program)
 
         self._programs[binary_name] = program
-        self._init_decompiler(binary_name, program)
+        try:
+            self._init_decompiler(binary_name, program)
+        except Exception:
+            logger.warning("Decompiler init failed for '%s'; will retry on first decompile call", binary_name)
 
         return self.get_binary_info(binary_name)
 
     def _init_decompiler(self, binary_name: str, program: Any) -> None:
         """Initialize a cached decompiler for a program."""
-        from ghidra.app.decompiler import DecompInterface  # type: ignore[import]
+        from ghidra.app.decompiler import DecompInterface, DecompileOptions  # type: ignore[import]
 
         decomp = DecompInterface()
-        decomp.openProgram(program)
+        options = DecompileOptions()
+        options.grabFromProgram(program)
+        decomp.setOptions(options)
+        result = decomp.openProgram(program)
+        # JPype may return None for Java boolean on success; only explicit False is failure
+        if result is not None and not bool(result):
+            msg = decomp.getLastMessage() or "unknown reason"
+            hint = ""
+            if "Could not find decompiler executable" in msg:
+                ghidra_dir = os.environ.get("GHIDRA_INSTALL_DIR", "<not set>")
+                try:
+                    from ghidra.util import Platform as GhidraPlatform  # type: ignore[import]
+                    platform_dir = GhidraPlatform.CURRENT_PLATFORM.getDirectoryName()
+                    expected = Path(ghidra_dir) / "Ghidra" / "Features" / "Decompiler" / "os" / platform_dir / "decompile"
+                    decomp_os_dir = Path(ghidra_dir) / "Ghidra" / "Features" / "Decompiler" / "os"
+                    available = list(decomp_os_dir.iterdir()) if decomp_os_dir.is_dir() else []
+                    hint = (
+                        f"\n  GHIDRA_INSTALL_DIR={ghidra_dir}"
+                        f"\n  JAVA_HOME={os.environ.get('JAVA_HOME', '<not set>')}"
+                        f"\n  Platform: {platform_dir}"
+                        f"\n  Expected: {expected} (exists={expected.exists()})"
+                        f"\n  Available os/ dirs: {[d.name for d in available]}"
+                    )
+                except Exception:
+                    hint = (
+                        f"\n  GHIDRA_INSTALL_DIR={ghidra_dir}"
+                        f"\n  JAVA_HOME={os.environ.get('JAVA_HOME', '<not set>')}"
+                        f"\n  Verify the native decompiler binary exists at:"
+                        f"\n    <GHIDRA_INSTALL_DIR>/Ghidra/Features/Decompiler/os/<platform>/decompile"
+                    )
+            raise RuntimeError(
+                f"Decompiler failed to open program '{binary_name}': {msg}{hint}"
+            )
         self._decompilers[binary_name] = decomp
 
     def get_program(self, binary_name: str) -> Any:
@@ -280,7 +329,9 @@ class GhidraBridge:
 
         if result is None or not result.decompileCompleted():
             error_msg = result.getErrorMessage() if result else "Unknown error"
-            raise RuntimeError(f"Decompilation failed: {error_msg}")
+            raise RuntimeError(
+                f"Decompilation failed for '{name_or_addr}' in '{binary_name}': {error_msg}"
+            )
 
         decomp_func = result.getDecompiledFunction()
         c_code = decomp_func.getC() if decomp_func else ""
@@ -521,12 +572,11 @@ class GhidraBridge:
                 mask_arr.append(0xFF)
             i += 2
 
-        import jarray  # type: ignore[import]
-        search_bytes_j = jarray.array(
-            [v - 256 if v > 127 else v for v in search_bytes_arr], 'b'
+        search_bytes_j = self._java_byte_array(
+            [v - 256 if v > 127 else v for v in search_bytes_arr]
         )
-        mask_bytes_j = jarray.array(
-            [v - 256 if v > 127 else v for v in mask_arr], 'b'
+        mask_bytes_j = self._java_byte_array(
+            [v - 256 if v > 127 else v for v in mask_arr]
         )
 
         monitor = ConsoleTaskMonitor()
@@ -554,8 +604,6 @@ class GhidraBridge:
         program = self.get_program(binary_name)
         memory = program.getMemory()
 
-        import jarray  # type: ignore[import]
-
         sections = []
         overall_bytes = bytearray()
 
@@ -568,7 +616,7 @@ class GhidraBridge:
                 continue
 
             # Read block bytes — must use Java byte array for getBytes()
-            data = jarray.zeros(size, 'b')
+            data = self._java_byte_array(size)
             try:
                 block.getBytes(block.getStart(), data)
             except Exception:
@@ -596,6 +644,14 @@ class GhidraBridge:
             "packed_likely": packed_likely,
             "sections": sections,
         }
+
+    @staticmethod
+    def _java_byte_array(size_or_values):
+        """Create a Java byte[] via JPype. Pass int for zeros, list for values."""
+        import jpype  # type: ignore[import]
+        if not isinstance(size_or_values, (list, tuple)):
+            size_or_values = int(size_or_values)
+        return jpype.JArray(jpype.JByte)(size_or_values)
 
     @staticmethod
     def _shannon_entropy(data: bytes | bytearray) -> float:
@@ -664,8 +720,7 @@ class GhidraBridge:
             # Calculate entropy for initialized blocks
             entropy = 0.0
             if block.isInitialized() and size > 0:
-                import jarray  # type: ignore[import]
-                data = jarray.zeros(size, 'b')
+                data = self._java_byte_array(size)
                 try:
                     block.getBytes(block.getStart(), data)
                     entropy = self._shannon_entropy(bytes(v & 0xFF for v in data))
@@ -697,6 +752,346 @@ class GhidraBridge:
             })
 
         return sections
+
+    # ── Advanced analysis methods ─────────────────────────────────
+
+    def get_memory_bytes(
+        self, binary_name: str, address: str, size: int = 256
+    ) -> dict[str, Any]:
+        """Read raw bytes from an address."""
+        size = min(size, 4096)
+        program = self.get_program(binary_name)
+        memory = program.getMemory()
+
+        addr_str = address.removeprefix("0x")
+        addr_factory = program.getAddressFactory()
+        addr = addr_factory.getDefaultAddressSpace().getAddress(int(addr_str, 16))
+
+        buf = self._java_byte_array(size)
+        truncated = False
+        try:
+            memory.getBytes(addr, buf)
+        except Exception:
+            # Partial read — find how many bytes we can actually get
+            truncated = True
+            for i in range(size):
+                try:
+                    memory.getByte(addr.add(i))
+                except Exception:
+                    buf = self._java_byte_array(i)
+                    if i > 0:
+                        memory.getBytes(addr, buf)
+                    size = i
+                    break
+
+        py_bytes = bytes(v & 0xFF for v in buf)
+        hex_str = py_bytes.hex()
+        ascii_str = "".join(chr(b) if 32 <= b < 127 else "." for b in py_bytes)
+
+        # Find containing section
+        block = memory.getBlock(addr)
+        containing_section = block.getName() if block else None
+
+        result: dict[str, Any] = {
+            "address": address,
+            "size": size,
+            "hex": hex_str,
+            "ascii": ascii_str,
+            "containing_section": containing_section,
+        }
+        if truncated:
+            result["truncated"] = True
+        return result
+
+    def search_instructions(
+        self,
+        binary_name: str,
+        mnemonic_pattern: str,
+        operand_pattern: str | None = None,
+        max_results: int = 100,
+    ) -> dict[str, Any]:
+        """Search instructions by mnemonic regex, optionally matching operands."""
+        import re
+
+        program = self.get_program(binary_name)
+        listing = program.getListing()
+        fm = program.getFunctionManager()
+
+        mnemonic_re = re.compile(mnemonic_pattern, re.IGNORECASE)
+        operand_re = re.compile(operand_pattern, re.IGNORECASE) if operand_pattern else None
+
+        matches = []
+        total = 0
+
+        for instr in listing.getInstructions(True):
+            mnemonic = instr.getMnemonicString()
+            if not mnemonic_re.search(mnemonic):
+                continue
+
+            if operand_re:
+                full_text = str(instr)
+                # Operand text is everything after the mnemonic
+                operand_text = full_text[len(mnemonic):].strip()
+                if not operand_re.search(operand_text):
+                    continue
+
+            total += 1
+            if len(matches) < max_results:
+                addr = instr.getAddress()
+                func = fm.getFunctionContaining(addr)
+                full_text = str(instr)
+                operand_text = full_text[len(mnemonic):].strip()
+                matches.append({
+                    "address": str(addr),
+                    "mnemonic": mnemonic,
+                    "operands": operand_text,
+                    "full_text": full_text,
+                    "function": func.getName() if func else None,
+                })
+
+        return {
+            "pattern": mnemonic_pattern,
+            "operand_pattern": operand_pattern,
+            "matches": matches,
+            "total": total,
+        }
+
+    def get_function_summary(
+        self, binary_name: str, name_or_addr: str
+    ) -> dict[str, Any]:
+        """Get rich function metadata without decompilation."""
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, name_or_addr)
+        if func is None:
+            raise KeyError(
+                f"Function '{name_or_addr}' not found in '{binary_name}'. "
+                f"Try using list_functions to find available functions."
+            )
+
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+
+        monitor = ConsoleTaskMonitor()
+
+        # Basic metadata
+        params = []
+        for p in func.getParameters():
+            params.append({
+                "name": p.getName(),
+                "type": str(p.getDataType()),
+                "storage": str(p.getVariableStorage()),
+            })
+
+        # Callees and callers
+        called = [
+            {"name": f.getName(), "address": str(f.getEntryPoint())}
+            for f in func.getCalledFunctions(monitor)
+        ]
+        callers = [
+            {"name": f.getName(), "address": str(f.getEntryPoint())}
+            for f in func.getCallingFunctions(monitor)
+        ]
+
+        # Referenced strings
+        listing = program.getListing()
+        ref_mgr = program.getReferenceManager()
+        referenced_strings = []
+        body = func.getBody()
+
+        for addr_range in body:
+            addr = addr_range.getMinAddress()
+            while addr is not None and addr.compareTo(addr_range.getMaxAddress()) <= 0:
+                for ref in ref_mgr.getReferencesFrom(addr):
+                    to_addr = ref.getToAddress()
+                    data = listing.getDefinedDataAt(to_addr)
+                    if data is not None and "string" in str(data.getDataType()).lower():
+                        val = data.getValue()
+                        if val is not None:
+                            referenced_strings.append({
+                                "address": str(to_addr),
+                                "value": str(val),
+                            })
+                addr = addr.next()
+
+        # Instruction count and cyclomatic complexity
+        instruction_count = 0
+        conditional_branches = 0
+        for instr in listing.getInstructions(body, True):
+            instruction_count += 1
+            if instr.getFlowType().isConditional():
+                conditional_branches += 1
+        cyclomatic_complexity = conditional_branches + 1
+
+        return {
+            "name": func.getName(),
+            "address": str(func.getEntryPoint()),
+            "size": func.getBody().getNumAddresses(),
+            "calling_convention": str(func.getCallingConventionName()),
+            "signature": str(func.getSignature()),
+            "parameters": params,
+            "return_type": str(func.getReturnType()),
+            "local_variable_count": len(func.getAllVariables()) - len(func.getParameters()),
+            "stack_frame_size": func.getStackFrame().getFrameSize(),
+            "is_thunk": func.isThunk(),
+            "called_functions": called,
+            "calling_functions": callers,
+            "referenced_strings": referenced_strings,
+            "instruction_count": instruction_count,
+            "cyclomatic_complexity": cyclomatic_complexity,
+        }
+
+    def get_basic_blocks(
+        self, binary_name: str, name_or_addr: str
+    ) -> dict[str, Any]:
+        """Get control-flow graph basic blocks for a function."""
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, name_or_addr)
+        if func is None:
+            raise KeyError(
+                f"Function '{name_or_addr}' not found in '{binary_name}'. "
+                f"Try using list_functions to find available functions."
+            )
+
+        from ghidra.program.model.block import BasicBlockModel  # type: ignore[import]
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+
+        monitor = ConsoleTaskMonitor()
+        block_model = BasicBlockModel(program)
+        listing = program.getListing()
+        func_body = func.getBody()
+
+        blocks = []
+        block_iter = block_model.getCodeBlocksContaining(func_body, monitor)
+
+        while block_iter.hasNext():
+            block = block_iter.next()
+            start = block.getMinAddress()
+            end = block.getMaxAddress()
+
+            # Instructions (capped at 50)
+            instructions = []
+            for instr in listing.getInstructions(block, True):
+                if len(instructions) >= 50:
+                    break
+                instructions.append({
+                    "address": str(instr.getAddress()),
+                    "text": str(instr),
+                })
+
+            # Successors
+            successors = []
+            dest_iter = block.getDestinations(monitor)
+            while dest_iter.hasNext():
+                dest = dest_iter.next()
+                dest_addr = dest.getDestinationAddress()
+                if func_body.contains(dest_addr):
+                    successors.append(str(dest_addr))
+
+            # Predecessors
+            predecessors = []
+            src_iter = block.getSources(monitor)
+            while src_iter.hasNext():
+                src = src_iter.next()
+                src_addr = src.getSourceAddress()
+                if func_body.contains(src_addr):
+                    predecessors.append(str(src_addr))
+
+            blocks.append({
+                "start": str(start),
+                "end": str(end),
+                "size": block.getNumAddresses(),
+                "instruction_count": len(instructions),
+                "instructions": instructions,
+                "successors": successors,
+                "predecessors": predecessors,
+            })
+
+        return {
+            "function": func.getName(),
+            "address": str(func.getEntryPoint()),
+            "total_blocks": len(blocks),
+            "blocks": blocks,
+        }
+
+    def get_call_graph(
+        self,
+        binary_name: str,
+        name_or_addr: str,
+        depth: int = 2,
+        direction: str = "callees",
+    ) -> dict[str, Any]:
+        """Get function call graph with BFS depth control."""
+        depth = min(depth, 10)
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, name_or_addr)
+        if func is None:
+            raise KeyError(
+                f"Function '{name_or_addr}' not found in '{binary_name}'. "
+                f"Try using list_functions to find available functions."
+            )
+
+        from collections import deque
+
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+
+        monitor = ConsoleTaskMonitor()
+        max_nodes = 500
+
+        nodes: dict[str, int] = {}  # name -> depth
+        edges: list[dict[str, str]] = []
+        visited: set[str] = set()
+
+        root_name = func.getName()
+        root_addr = str(func.getEntryPoint())
+        nodes[root_name] = 0
+        visited.add(root_name)
+
+        queue: deque[tuple[Any, int]] = deque([(func, 0)])
+
+        while queue and len(nodes) < max_nodes:
+            current_func, current_depth = queue.popleft()
+            if current_depth >= depth:
+                continue
+
+            neighbors = []
+            if direction in ("callees", "both"):
+                for callee in current_func.getCalledFunctions(monitor):
+                    neighbors.append((current_func.getName(), callee.getName(), callee))
+            if direction in ("callers", "both"):
+                for caller in current_func.getCallingFunctions(monitor):
+                    neighbors.append((caller.getName(), current_func.getName(), caller))
+
+            for from_name, to_name, neighbor_func in neighbors:
+                edge = {"from": from_name, "to": to_name}
+                if edge not in edges:
+                    edges.append(edge)
+
+                neighbor_name = neighbor_func.getName()
+                if neighbor_name not in visited and len(nodes) < max_nodes:
+                    visited.add(neighbor_name)
+                    nodes[neighbor_name] = current_depth + 1
+                    queue.append((neighbor_func, current_depth + 1))
+
+        node_list = [
+            {"name": name, "address": None, "depth": d}
+            for name, d in nodes.items()
+        ]
+        # Fill in addresses from program
+        fm = program.getFunctionManager()
+        for node in node_list:
+            resolved = self._resolve_function(program, node["name"])
+            if resolved:
+                node["address"] = str(resolved.getEntryPoint())
+
+        return {
+            "root": root_name,
+            "root_address": root_addr,
+            "direction": direction,
+            "depth": depth,
+            "nodes": node_list,
+            "edges": edges,
+            "total_nodes": len(node_list),
+            "total_edges": len(edges),
+        }
 
     def close(self) -> None:
         """Close all programs, decompilers, and the project."""

@@ -18,7 +18,7 @@ docker compose run --rm -i ghidra-mcp
 
 ## Architecture
 
-- `src/ghidra_mcp/server.py` — FastMCP server, all 14 tools + 5 resources registered here
+- `src/ghidra_mcp/server.py` — FastMCP server, all 19 tools + 5 resources registered here
 - `src/ghidra_mcp/ghidra_bridge.py` — Core logic: PyGhidra JVM lifecycle, Ghidra project/program management, all analysis methods
 - `src/ghidra_mcp/__main__.py` — CLI entry point
 - `tests/conftest.py` — MockGhidraBridge for unit testing without Ghidra

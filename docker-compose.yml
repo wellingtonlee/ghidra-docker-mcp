@@ -1,6 +1,8 @@
 services:
   ghidra-mcp:
     build: .
+    # Uncomment to force x86_64 emulation on Apple Silicon (slower but avoids arm64 issues):
+    # platform: linux/amd64
     stdin_open: true
     volumes:
       - ./binaries:/home/ghidra/binaries:ro

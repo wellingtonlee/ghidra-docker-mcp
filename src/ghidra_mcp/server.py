@@ -241,6 +241,81 @@ def create_server(
         """
         return bridge.get_sections(binary_name)
 
+    # ── Advanced analysis tools ────────────────────────────────────
+
+    @mcp.tool()
+    def get_memory_bytes(
+        binary_name: str, address: str, size: int = 256
+    ) -> dict[str, Any]:
+        """Read raw bytes from an address in binary memory.
+
+        Args:
+            binary_name: Name of the binary.
+            address: Hex address to read from (e.g., "0x00401000").
+            size: Number of bytes to read (default: 256, max: 4096).
+        """
+        return bridge.get_memory_bytes(binary_name, address, size=size)
+
+    @mcp.tool()
+    def search_instructions(
+        binary_name: str,
+        mnemonic_pattern: str,
+        operand_pattern: str | None = None,
+        max_results: int = 100,
+    ) -> dict[str, Any]:
+        """Search disassembly for instructions matching a regex pattern.
+
+        Args:
+            binary_name: Name of the binary.
+            mnemonic_pattern: Regex pattern to match instruction mnemonics (e.g., "xor|sub").
+            operand_pattern: Optional regex to match operand text.
+            max_results: Maximum matches to return (default: 100).
+        """
+        return bridge.search_instructions(
+            binary_name, mnemonic_pattern, operand_pattern=operand_pattern, max_results=max_results
+        )
+
+    @mcp.tool()
+    def get_function_summary(binary_name: str, name_or_addr: str) -> dict[str, Any]:
+        """Get rich function metadata without decompilation: parameters, callees, callers, strings, complexity.
+
+        Args:
+            binary_name: Name of the binary.
+            name_or_addr: Function name or hex address (e.g., "main" or "0x00401000").
+        """
+        return bridge.get_function_summary(binary_name, name_or_addr)
+
+    @mcp.tool()
+    def get_basic_blocks(binary_name: str, name_or_addr: str) -> dict[str, Any]:
+        """Get control-flow graph basic blocks for a function.
+
+        Returns blocks with instructions, successor/predecessor edges for CFG reconstruction.
+
+        Args:
+            binary_name: Name of the binary.
+            name_or_addr: Function name or hex address (e.g., "main" or "0x00401000").
+        """
+        return bridge.get_basic_blocks(binary_name, name_or_addr)
+
+    @mcp.tool()
+    def get_call_graph(
+        binary_name: str,
+        name_or_addr: str,
+        depth: int = 2,
+        direction: str = "callees",
+    ) -> dict[str, Any]:
+        """Get function call graph with BFS depth control.
+
+        Args:
+            binary_name: Name of the binary.
+            name_or_addr: Root function name or hex address.
+            depth: How many levels to traverse (default: 2, max: 10).
+            direction: "callees", "callers", or "both" (default: "callees").
+        """
+        return bridge.get_call_graph(
+            binary_name, name_or_addr, depth=depth, direction=direction
+        )
+
     # ── Resources ──────────────────────────────────────────────────
 
     @mcp.resource("ghidra://binaries")

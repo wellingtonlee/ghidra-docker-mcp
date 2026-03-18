@@ -4,7 +4,7 @@ A Dockerized [Ghidra](https://ghidra-sre.org/) headless server exposed via the [
 
 ## Features
 
-- **14 MCP tools** for binary analysis: decompilation, function listing, string search, cross-references, byte pattern search, and malware-focused analysis
+- **19 MCP tools** for binary analysis: decompilation, function listing, string search, cross-references, byte pattern search, malware-focused analysis, and advanced RE tools (CFG, call graphs, instruction search)
 - **5 MCP resources** for browsing binary metadata, functions, strings, and imports
 - **Multi-binary support** — analyze multiple binaries simultaneously in a single Ghidra project
 - **Malware analysis tools** — entropy analysis (packing detection), suspicious API categorization, section anomaly detection
@@ -35,6 +35,10 @@ docker compose build
   }
 }
 ```
+
+#### Apple Silicon
+
+The Docker image builds natively on arm64. Since Ghidra releases don't include pre-built `linux_arm_64` decompiler binaries, the Dockerfile automatically builds the decompiler from source during `docker compose build` (adds ~2 min to build time, requires no extra configuration). If you encounter issues, you can force x86_64 emulation by uncommenting `platform: linux/amd64` in `docker-compose.yml` (slower due to Rosetta/QEMU).
 
 ### Local Development
 
@@ -69,6 +73,8 @@ ghidra-mcp --project-dir ./projects --project-name my_project
 | `list_exports` | List exported symbols |
 | `get_xrefs` | Get cross-references to/from an address |
 | `search_bytes` | Search for hex byte patterns with wildcards |
+| `get_memory_bytes` | Read raw bytes from an address |
+| `search_instructions` | Regex search over disassembly mnemonics/operands |
 
 ### Malware Analysis
 
@@ -77,6 +83,14 @@ ghidra-mcp --project-dir ./projects --project-name my_project
 | `get_entropy` | Per-section Shannon entropy, packing detection |
 | `detect_suspicious_apis` | Categorized suspicious imports (injection, persistence, crypto, network, anti-debug) |
 | `get_sections` | Sections with permissions, entropy, and anomaly flags (W+X, unusual names) |
+
+### Advanced Analysis
+
+| Tool | Description |
+|------|-------------|
+| `get_function_summary` | Rich function metadata (params, callees, callers, strings, complexity) without decompilation |
+| `get_basic_blocks` | Control-flow graph basic blocks with instructions and edges |
+| `get_call_graph` | Function call graph with BFS depth control (callees/callers/both) |
 
 ## MCP Resources
 
@@ -94,6 +108,7 @@ Environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `GHIDRA_INSTALL_DIR` | *(auto-detect)* | Path to Ghidra installation directory (required if PyGhidra auto-detection fails) |
 | `GHIDRA_ANALYSIS_TIMEOUT_SECONDS` | `300` | Analysis timeout per binary |
 | `GHIDRA_MAX_HEAP` | `2g` | JVM max heap size |
 
