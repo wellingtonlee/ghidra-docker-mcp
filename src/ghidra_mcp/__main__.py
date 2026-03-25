@@ -18,11 +18,18 @@ def main() -> None:
         default="mcp_project",
         help="Ghidra project name (default: mcp_project)",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["full", "code"],
+        default="full",
+        help="Server mode: 'full' registers all tools, 'code' registers only search+execute (default: full)",
+    )
     args = parser.parse_args()
 
     server = create_server(
         project_dir=args.project_dir,
         project_name=args.project_name,
+        mode=args.mode,
     )
     server.run(transport="stdio")
 

@@ -18,13 +18,124 @@ logger = logging.getLogger(__name__)
 def create_server(
     project_dir: str = "/home/ghidra/projects",
     project_name: str = "mcp_project",
+    mode: str = "full",
 ) -> FastMCP:
-    """Create and configure the Ghidra MCP server with all tools and resources."""
+    """Create and configure the Ghidra MCP server.
+
+    Args:
+        project_dir: Directory for Ghidra projects.
+        project_name: Ghidra project name.
+        mode: "full" registers all 24 tools + 5 resources;
+              "code" registers only search + execute (saves tokens).
+    """
     mcp = FastMCP(
         "ghidra-mcp",
         instructions="Ghidra binary analysis server for reverse engineering and malware analysis",
     )
     bridge = GhidraBridge(project_dir, project_name)
+
+    if mode == "code":
+        _register_code_mode_tools(mcp, bridge)
+    else:
+        _register_full_mode_tools(mcp, bridge)
+
+    return mcp
+
+
+# ── Code mode (search + execute) ─────────────────────────────────
+
+
+def _dispatch(bridge: GhidraBridge, method: str, params: dict[str, Any]) -> Any:
+    """Dispatch a code-mode execute call to the appropriate bridge method."""
+    from ghidra_mcp.tool_registry import TOOL_REGISTRY
+
+    if method not in TOOL_REGISTRY:
+        raise ValueError(
+            f"Unknown method '{method}'. Use the search tool to find available methods. "
+            f"Available: {list(TOOL_REGISTRY.keys())}"
+        )
+
+    # Special case: upload_binary has base64 decode + temp file logic
+    if method == "upload_binary":
+        data = base64.b64decode(params["data_base64"])
+        tmp_dir = Path(tempfile.mkdtemp(prefix="ghidra_upload_"))
+        tmp_path = tmp_dir / params["filename"]
+        tmp_path.write_bytes(data)
+        try:
+            return bridge.import_binary(str(tmp_path), analyze=params.get("analyze", True))
+        finally:
+            tmp_path.unlink(missing_ok=True)
+            tmp_dir.rmdir()
+
+    # Special case: delete_binary wraps bridge response
+    if method == "delete_binary":
+        binary_name = params["binary_name"]
+        bridge.delete_binary(binary_name)
+        return {"status": "deleted", "binary_name": binary_name}
+
+    # Special case: emulate_session_destroy wraps bridge response + name differs
+    if method == "emulate_session_destroy":
+        binary_name = params["binary_name"]
+        name_or_addr = params["name_or_addr"]
+        bridge.destroy_emulator_session(binary_name, name_or_addr)
+        return {"status": "destroyed", "binary_name": binary_name, "function": name_or_addr}
+
+    # Rename "filter" -> "filter_name" for bridge methods that use the latter
+    if method in ("list_functions", "list_imports", "list_exports"):
+        params = dict(params)
+        if "filter" in params:
+            params["filter_name"] = params.pop("filter")
+
+    # Standard dispatch
+    bridge_method = getattr(bridge, method, None)
+    if bridge_method is None:
+        raise ValueError(f"No bridge method for '{method}'")
+
+    return bridge_method(**params)
+
+
+def _register_code_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
+    """Register the two code-mode tools: search and execute."""
+    from ghidra_mcp.tool_registry import TOOL_REGISTRY
+
+    @mcp.tool()
+    def search(query: str | None = None) -> list[dict[str, Any]]:
+        """Search the Ghidra tool catalog. Returns tool names, descriptions, and parameter signatures.
+
+        Use this to discover available analysis methods before calling execute.
+
+        Args:
+            query: Optional substring to filter tool names and descriptions. Returns all tools if omitted.
+        """
+        results = []
+        for name, info in TOOL_REGISTRY.items():
+            if query and query.lower() not in name.lower() and query.lower() not in info["description"].lower():
+                continue
+            results.append({
+                "tool": name,
+                "description": info["description"],
+                "parameters": info["parameters"],
+            })
+        return results
+
+    @mcp.tool()
+    def execute(method: str, params: dict[str, Any] | None = None) -> Any:
+        """Execute a Ghidra analysis tool by name with the given parameters.
+
+        Use 'search' to discover available tools and their parameter signatures.
+
+        Args:
+            method: Tool name from the catalog (e.g., "list_functions", "decompile_function").
+            params: Keyword arguments for the tool as a dictionary. Omit for tools with no required params.
+        """
+        return _dispatch(bridge, method, params or {})
+
+
+# ── Full mode (all tools + resources) ────────────────────────────
+
+
+def _register_full_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
+    """Register all 24 tools and 5 resources for full mode."""
 
     # ── Project tools ──────────────────────────────────────────────
 
@@ -407,5 +518,3 @@ def create_server(
     def resource_binary_imports(name: str) -> list[dict[str, Any]]:
         """Get all imported symbols for a binary."""
         return bridge.list_imports(name)
-
-    return mcp

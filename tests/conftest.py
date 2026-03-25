@@ -400,3 +400,13 @@ def mcp_server(mock_bridge):
 
         server = create_server(project_dir="/tmp/test_projects", project_name="test")
         yield server, mock_bridge
+
+
+@pytest.fixture
+def mcp_server_code_mode(mock_bridge):
+    """Create an MCP server in code mode with a mocked GhidraBridge."""
+    with patch("ghidra_mcp.server.GhidraBridge", return_value=mock_bridge):
+        from ghidra_mcp.server import create_server
+
+        server = create_server(project_dir="/tmp/test_projects", project_name="test", mode="code")
+        yield server, mock_bridge
