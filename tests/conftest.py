@@ -45,6 +45,9 @@ class MockGhidraBridge:
     def delete_binary(self, binary_name: str) -> None:
         if binary_name not in self._programs:
             raise KeyError(f"Binary '{binary_name}' not found.")
+        keys_to_remove = [k for k in self._emulator_sessions if k.startswith(f"{binary_name}:")]
+        for key in keys_to_remove:
+            self._emulator_sessions.pop(key)
         del self._programs[binary_name]
 
     def get_binary_info(self, binary_name: str) -> dict[str, Any]:

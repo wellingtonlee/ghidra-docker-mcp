@@ -314,6 +314,16 @@ class TestBinaryNotFound:
         with pytest.raises(KeyError):
             bridge.emulate_function("nonexistent.elf", "main")
 
+    def test_emulate_step_binary_not_found(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(KeyError):
+            bridge.emulate_step("nonexistent.elf", "main")
+
+    def test_emulate_session_destroy_binary_not_found(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(KeyError):
+            bridge.destroy_emulator_session("nonexistent.elf", "main")
+
 
 class TestEmulationTools:
     def test_emulate_function_basic(self, mcp_server):
@@ -385,3 +395,168 @@ class TestEmulationTools:
         server, bridge = mcp_server
         bridge.import_binary("/tmp/test.elf")
         bridge.destroy_emulator_session("test.elf", "main")  # no-op, should not raise
+
+    # ── Session Lifecycle ─────────────────────────────────────────
+
+    def test_emulate_function_session_reuse(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        r1 = bridge.emulate_function("test.elf", "main", args=[1])
+        r2 = bridge.emulate_function("test.elf", "main", args=[2])
+        assert r1["session_key"] == r2["session_key"]
+        assert r2["return_value"] == 2
+
+    def test_emulate_function_multiple_functions(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        r1 = bridge.emulate_function("test.elf", "main", args=[1])
+        r2 = bridge.emulate_function("test.elf", "_start", args=[2])
+        assert r1["session_key"] != r2["session_key"]
+        assert r1["session_key"] == "test.elf:main"
+        assert r2["session_key"] == "test.elf:_start"
+
+    def test_emulate_function_multiple_binaries(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.import_binary("/tmp/other.elf")
+        r1 = bridge.emulate_function("test.elf", "main", args=[1])
+        r2 = bridge.emulate_function("other.elf", "main", args=[2])
+        assert r1["session_key"] == "test.elf:main"
+        assert r2["session_key"] == "other.elf:main"
+
+    def test_delete_binary_cleans_emulator_sessions(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        bridge.delete_binary("test.elf")
+        bridge.import_binary("/tmp/test.elf")
+        with pytest.raises(KeyError):
+            bridge.emulate_step("test.elf", "main")
+
+    def test_close_clears_emulator_sessions(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        bridge.close()
+        assert len(bridge._emulator_sessions) == 0
+
+    def test_emulate_session_destroy_then_recreate(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main", args=[1])
+        bridge.destroy_emulator_session("test.elf", "main")
+        result = bridge.emulate_function("test.elf", "main", args=[5])
+        assert result["return_value"] == 5
+        # Step should work on recreated session
+        step_result = bridge.emulate_step("test.elf", "main")
+        assert step_result["steps_executed"] == 1
+
+    # ── Parameter Edge Cases ──────────────────────────────────────
+
+    def test_emulate_function_empty_args_list(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[])
+        assert result["args_provided"] == []
+        assert result["return_value"] == 0
+
+    def test_emulate_function_single_arg(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[42])
+        assert result["return_value"] == 42
+
+    def test_emulate_function_many_args(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[1, 2, 3, 4, 5])
+        assert result["return_value"] == 15
+        assert result["args_provided"] == [1, 2, 3, 4, 5]
+
+    def test_emulate_function_negative_args(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[-1, -2])
+        assert result["return_value"] == -3
+
+    def test_emulate_function_large_arg_values(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[0xFFFFFFFF, 1])
+        assert result["return_value"] == 0xFFFFFFFF + 1
+
+    # ── Step Parameter Edge Cases ─────────────────────────────────
+
+    def test_emulate_step_count_zero(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main", count=0)
+        assert result["steps_executed"] == 0
+
+    def test_emulate_step_no_registers_no_memory(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main")
+        assert result["registers"] == {}
+        assert result["memory"] == []
+
+    def test_emulate_step_multiple_memory_regions(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step(
+            "test.elf", "main",
+            read_memory=[
+                {"address": "0x00200000", "size": 4},
+                {"address": "0x00300000", "size": 8},
+                {"address": "0x00400000", "size": 16},
+            ],
+        )
+        assert len(result["memory"]) == 3
+        assert result["memory"][0]["hex"] == "00" * 4
+        assert result["memory"][1]["hex"] == "00" * 8
+        assert result["memory"][2]["hex"] == "00" * 16
+
+    # ── Error Handling ────────────────────────────────────────────
+
+    def test_emulate_session_destroy_after_binary_delete(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        bridge.delete_binary("test.elf")
+        with pytest.raises(KeyError):
+            bridge.destroy_emulator_session("test.elf", "main")
+
+    def test_emulate_step_after_binary_delete(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        bridge.delete_binary("test.elf")
+        with pytest.raises(KeyError):
+            bridge.emulate_step("test.elf", "main")
+
+    # ── Response Structure Validation ─────────────────────────────
+
+    def test_emulate_function_response_has_all_keys(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[1])
+        expected_keys = {
+            "session_key", "function", "entry_address", "args_provided",
+            "return_value", "steps_executed", "max_steps", "hit_breakpoint",
+            "timed_out", "final_pc", "final_sp",
+        }
+        assert set(result.keys()) == expected_keys
+
+    def test_emulate_step_response_has_all_keys(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main", count=1, read_registers=["RAX"])
+        expected_keys = {
+            "session_key", "steps_executed", "hit_breakpoint",
+            "current_pc", "registers", "memory",
+        }
+        assert set(result.keys()) == expected_keys
