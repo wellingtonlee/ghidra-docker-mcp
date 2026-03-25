@@ -316,6 +316,71 @@ def create_server(
             binary_name, name_or_addr, depth=depth, direction=direction
         )
 
+    # ── Emulation tools ────────────────────────────────────────────
+
+    @mcp.tool()
+    def emulate_function(
+        binary_name: str,
+        name_or_addr: str,
+        args: list[int] | None = None,
+        max_steps: int = 10000,
+    ) -> dict[str, Any]:
+        """Emulate a function with optional arguments and return the result.
+
+        Sets up the emulator using the function's calling convention, places
+        arguments in the correct registers/stack locations, runs until return
+        or max_steps, and extracts the return value.
+
+        Only self-contained functions emulate correctly — external/imported
+        calls (printf, malloc, etc.) will cause emulation to stop or fail.
+
+        Args:
+            binary_name: Name of the binary.
+            name_or_addr: Function name or hex address (e.g., "main" or "0x00401000").
+            args: Integer arguments to pass to the function (placed per calling convention).
+            max_steps: Maximum emulation steps before stopping (default: 10000).
+        """
+        return bridge.emulate_function(
+            binary_name, name_or_addr, args=args, max_steps=max_steps
+        )
+
+    @mcp.tool()
+    def emulate_step(
+        binary_name: str,
+        name_or_addr: str,
+        count: int = 1,
+        read_registers: list[str] | None = None,
+        read_memory: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Single-step an emulator session, reading registers and memory.
+
+        Requires a session created by a prior emulate_function call.
+
+        Args:
+            binary_name: Name of the binary.
+            name_or_addr: Function name or hex address identifying the session.
+            count: Number of steps to execute (default: 1).
+            read_registers: Register names to read after stepping (e.g., ["RAX", "RBX"]).
+            read_memory: Memory regions to read: [{"address": "0x...", "size": 16}].
+        """
+        return bridge.emulate_step(
+            binary_name, name_or_addr, count=count,
+            read_registers=read_registers, read_memory=read_memory,
+        )
+
+    @mcp.tool()
+    def emulate_session_destroy(
+        binary_name: str, name_or_addr: str
+    ) -> dict[str, str]:
+        """Destroy an emulator session and free its resources.
+
+        Args:
+            binary_name: Name of the binary.
+            name_or_addr: Function name or hex address identifying the session.
+        """
+        bridge.destroy_emulator_session(binary_name, name_or_addr)
+        return {"status": "destroyed", "binary_name": binary_name, "function": name_or_addr}
+
     # ── Resources ──────────────────────────────────────────────────
 
     @mcp.resource("ghidra://binaries")

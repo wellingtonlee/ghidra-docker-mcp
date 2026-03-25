@@ -308,3 +308,80 @@ class TestBinaryNotFound:
         server, bridge = mcp_server
         with pytest.raises(KeyError):
             bridge.get_call_graph("nonexistent.elf", "main")
+
+    def test_emulate_function_binary_not_found(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(KeyError):
+            bridge.emulate_function("nonexistent.elf", "main")
+
+
+class TestEmulationTools:
+    def test_emulate_function_basic(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[1, 2])
+        assert result["function"] == "main"
+        assert result["return_value"] == 3
+        assert result["hit_breakpoint"] is True
+        assert result["timed_out"] is False
+        assert result["args_provided"] == [1, 2]
+
+    def test_emulate_function_no_args(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main")
+        assert result["args_provided"] == []
+        assert result["return_value"] == 0
+
+    def test_emulate_function_custom_max_steps(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", max_steps=500)
+        assert result["max_steps"] == 500
+
+    def test_emulate_function_by_address(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "0x00101000", args=[42])
+        assert result["session_key"] == "test.elf:0x00101000"
+        assert result["return_value"] == 42
+
+    def test_emulate_step_requires_session(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        with pytest.raises(KeyError):
+            bridge.emulate_step("test.elf", "main")
+
+    def test_emulate_step_after_function(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main", count=5, read_registers=["RAX", "RBX"])
+        assert result["steps_executed"] == 5
+        assert "RAX" in result["registers"]
+        assert "RBX" in result["registers"]
+
+    def test_emulate_step_with_memory_read(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step(
+            "test.elf", "main",
+            read_memory=[{"address": "0x00200000", "size": 8}],
+        )
+        assert len(result["memory"]) == 1
+        assert result["memory"][0]["address"] == "0x00200000"
+        assert result["memory"][0]["hex"] == "00" * 8
+
+    def test_emulate_session_destroy(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        bridge.destroy_emulator_session("test.elf", "main")
+        with pytest.raises(KeyError):
+            bridge.emulate_step("test.elf", "main")
+
+    def test_emulate_session_destroy_nonexistent_is_safe(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.destroy_emulator_session("test.elf", "main")  # no-op, should not raise
