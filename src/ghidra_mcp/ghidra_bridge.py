@@ -69,7 +69,7 @@ class GhidraBridge:
     """Manages Ghidra project, programs, and decompiler instances via PyGhidra."""
 
     def __init__(self, project_dir: str, project_name: str) -> None:
-        self.project_dir = Path(project_dir)
+        self.project_dir = Path(project_dir).resolve()
         self.project_name = project_name
         self._project: Any = None
         self._programs: dict[str, Any] = {}

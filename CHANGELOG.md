@@ -12,6 +12,7 @@
 - Claude Code config examples now use `.mcp.json` (project-level) instead of `.claude/settings.json`.
 - Local config examples use full venv path (`/path/to/venv/bin/ghidra-mcp`) instead of bare `ghidra-mcp`.
 - Installation instructions now include virtual environment setup.
+- `import_binary` threw `java.lang.IllegalArgumentException: absolute path required` when `--project-dir` was relative (the default `./ghidra-projects`). Now resolves to absolute path via `Path.resolve()`.
 
 ## [0.2.2] - 2026-03-17
 
