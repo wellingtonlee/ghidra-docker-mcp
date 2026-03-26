@@ -16,6 +16,7 @@
 - Local config examples use full venv path (`/path/to/venv/bin/ghidra-mcp`) instead of bare `ghidra-mcp`.
 - Installation instructions now include virtual environment setup.
 - `import_binary` threw `java.lang.IllegalArgumentException: absolute path required` when `--project-dir` was relative (the default `./ghidra-projects`). Now resolves to absolute path via `Path.resolve()`.
+- `emulate_function` threw "Cannot convert value to Java byte" when writing byte values > 127 to memory. `_java_byte_array` now converts unsigned bytes (0-255) to Java's signed range (-128 to 127) centrally, protecting all callers.
 - Any tool threw `'NoneType' object has no attribute 'importProgram'` if Ghidra project initialization failed after JVM started. `_started` was set before project creation, preventing recovery on subsequent calls. Extracted `_init_project()` so `_ensure_started()` retries project init if `_project` is None.
 
 ## [0.2.2] - 2026-03-17

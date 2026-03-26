@@ -388,7 +388,7 @@ emulate_session_destroy(binary_name="malware.exe", name_or_addr="decrypt_string"
 
 ## Code Mode
 
-Code Mode is a token-efficient operating mode that replaces all 26 individual tool registrations with just 2 meta-tools: `search` and `execute`. This dramatically reduces the number of tool schemas sent to the LLM on every request, saving tokens and cost while preserving full analytical capability.
+Code Mode is a token-efficient operating mode that replaces all 32 individual tool registrations with just 2 meta-tools: `search` and `execute`. This dramatically reduces the number of tool schemas sent to the LLM on every request, saving tokens and cost while preserving full analytical capability.
 
 ### Activation
 
@@ -508,7 +508,7 @@ pytest tests/ -v
 MCP Client (Claude Desktop / Claude Code / OpenCode / Continue.dev / ...)
   ↕ stdio
 FastMCP Server (server.py)
-  ├── Full Mode: 26 @mcp.tool() + 5 @mcp.resource()
+  ├── Full Mode: 32 @mcp.tool() + 5 @mcp.resource()
   └── Code Mode: search + execute → _dispatch()
         ↕
 GhidraBridge (ghidra_bridge.py)

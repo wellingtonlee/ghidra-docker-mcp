@@ -766,11 +766,16 @@ class GhidraBridge:
 
     @staticmethod
     def _java_byte_array(size_or_values):
-        """Create a Java byte[] via JPype. Pass int for zeros, list for values."""
+        """Create a Java byte[] via JPype. Pass int for zeros, list for values.
+
+        Automatically converts unsigned bytes (0-255) to Java signed range (-128 to 127).
+        """
         import jpype  # type: ignore[import]
         if not isinstance(size_or_values, (list, tuple)):
             size_or_values = int(size_or_values)
-        return jpype.JArray(jpype.JByte)(size_or_values)
+            return jpype.JArray(jpype.JByte)(size_or_values)
+        signed = [(v - 256) if v > 127 else v for v in size_or_values]
+        return jpype.JArray(jpype.JByte)(signed)
 
     @staticmethod
     def _shannon_entropy(data: bytes | bytearray) -> float:
