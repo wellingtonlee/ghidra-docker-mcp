@@ -4,12 +4,12 @@ A [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Conte
 
 ## Features
 
-- **24 MCP tools** for binary analysis: decompilation, function listing, string search, cross-references, byte pattern search, malware-focused analysis, advanced RE tools (CFG, call graphs, instruction search), and emulation
+- **26 MCP tools** for binary analysis: decompilation, function listing, string search, cross-references, byte pattern search, malware-focused analysis, advanced RE tools (CFG, call graphs, instruction search), and emulation
 - **3 emulation tools** — emulate functions with automatic calling convention handling, single-step through code, read registers and memory
 - **5 MCP resources** for browsing binary metadata, functions, strings, and imports
 - **Multi-binary support** — analyze multiple binaries simultaneously in a single Ghidra project
 - **Malware analysis tools** — entropy analysis (packing detection), suspicious API categorization, section anomaly detection
-- **Code Mode** — token-saving operating mode that exposes only 2 tools (`search` + `execute`) instead of all 24, for LLM-efficient usage
+- **Code Mode** — token-saving operating mode that exposes only 2 tools (`search` + `execute`) instead of all 26, for LLM-efficient usage
 - **Docker or local** — runs in an isolated container or directly on your machine via stdio transport
 - **PyGhidra 3.0** — direct Ghidra Java API access via in-process JVM (no Ghidra scripts needed)
 
@@ -257,6 +257,8 @@ Both modes provide identical analytical capabilities — Code Mode simply routes
 | `list_functions` | List functions with pagination and name filtering |
 | `decompile_function` | Decompile a function to C pseudocode |
 | `rename_function` | Rename a function |
+| `rename_variable` | Rename a variable (parameter or local) within a function |
+| `rename_label` | Rename a symbol/label in the program |
 | `list_strings` | List defined strings |
 | `search_strings` | Search strings by substring or regex |
 | `list_imports` | List imported symbols |
@@ -348,7 +350,7 @@ emulate_session_destroy(binary_name="malware.exe", name_or_addr="decrypt_string"
 
 ## Code Mode
 
-Code Mode is a token-efficient operating mode that replaces all 24 individual tool registrations with just 2 meta-tools: `search` and `execute`. This dramatically reduces the number of tool schemas sent to the LLM on every request, saving tokens and cost while preserving full analytical capability.
+Code Mode is a token-efficient operating mode that replaces all 26 individual tool registrations with just 2 meta-tools: `search` and `execute`. This dramatically reduces the number of tool schemas sent to the LLM on every request, saving tokens and cost while preserving full analytical capability.
 
 ### Activation
 
@@ -459,7 +461,7 @@ pip install -e ".[dev]"
 # Run tests (uses mocked GhidraBridge, no Ghidra needed)
 pytest tests/ -v
 
-# 105 tests covering full mode, emulation, and code mode
+# 111 tests covering full mode, emulation, and code mode
 ```
 
 ## Architecture
@@ -468,7 +470,7 @@ pytest tests/ -v
 MCP Client (Claude Desktop / Claude Code / OpenCode / Continue.dev / ...)
   ↕ stdio
 FastMCP Server (server.py)
-  ├── Full Mode: 24 @mcp.tool() + 5 @mcp.resource()
+  ├── Full Mode: 26 @mcp.tool() + 5 @mcp.resource()
   └── Code Mode: search + execute → _dispatch()
         ↕
 GhidraBridge (ghidra_bridge.py)
