@@ -13,7 +13,7 @@ class TestToolRegistry:
     """Verify the registry structure is correct."""
 
     def test_registry_has_all_tools(self):
-        assert len(TOOL_REGISTRY) == 26
+        assert len(TOOL_REGISTRY) == 32
 
     def test_each_entry_has_required_keys(self):
         for name, info in TOOL_REGISTRY.items():
@@ -45,7 +45,7 @@ class TestSearch:
         results = []
         for name, info in TOOL_REGISTRY.items():
             results.append({"tool": name, "description": info["description"], "parameters": info["parameters"]})
-        assert len(results) == 26
+        assert len(results) == 32
 
     def test_search_with_query_filters(self, mcp_server_code_mode):
         server, bridge = mcp_server_code_mode
@@ -212,6 +212,52 @@ class TestDispatch:
         })
         assert result["old_name"] == "LAB_00101000"
         assert result["new_name"] == "loop_start"
+
+    def test_dispatch_connect_server(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        from ghidra_mcp.server import _dispatch
+        result = _dispatch(bridge, "connect_server", {"host": "ghidra.example.com"})
+        assert result["status"] == "connected"
+
+    def test_dispatch_disconnect_server(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        from ghidra_mcp.server import _dispatch
+        _dispatch(bridge, "connect_server", {"host": "ghidra.example.com"})
+        result = _dispatch(bridge, "disconnect_server", {})
+        assert result["status"] == "disconnected"
+
+    def test_dispatch_list_repositories(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        from ghidra_mcp.server import _dispatch
+        _dispatch(bridge, "connect_server", {"host": "ghidra.example.com"})
+        result = _dispatch(bridge, "list_repositories", {})
+        assert isinstance(result, list)
+
+    def test_dispatch_list_server_files(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        from ghidra_mcp.server import _dispatch
+        _dispatch(bridge, "connect_server", {"host": "ghidra.example.com"})
+        result = _dispatch(bridge, "list_server_files", {"repository_name": "test-repo"})
+        assert result["repository"] == "test-repo"
+
+    def test_dispatch_open_from_server(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        from ghidra_mcp.server import _dispatch
+        _dispatch(bridge, "connect_server", {"host": "ghidra.example.com"})
+        result = _dispatch(bridge, "open_from_server", {
+            "repository_name": "test-repo", "file_path": "/malware.exe",
+        })
+        assert result["name"] == "malware.exe"
+
+    def test_dispatch_checkin_file(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        from ghidra_mcp.server import _dispatch
+        _dispatch(bridge, "connect_server", {"host": "ghidra.example.com"})
+        _dispatch(bridge, "open_from_server", {
+            "repository_name": "test-repo", "file_path": "/malware.exe",
+        })
+        result = _dispatch(bridge, "checkin_file", {"binary_name": "malware.exe"})
+        assert result["status"] == "checked_in"
 
 
 class TestFullModeUnchanged:

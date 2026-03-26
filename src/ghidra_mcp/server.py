@@ -25,7 +25,7 @@ def create_server(
     Args:
         project_dir: Directory for Ghidra projects.
         project_name: Ghidra project name.
-        mode: "full" registers all 26 tools + 5 resources;
+        mode: "full" registers all 32 tools + 5 resources;
               "code" registers only search + execute (saves tokens).
     """
     mcp = FastMCP(
@@ -135,7 +135,7 @@ def _register_code_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
 
 
 def _register_full_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
-    """Register all 26 tools and 5 resources for full mode."""
+    """Register all 32 tools and 5 resources for full mode."""
 
     # ── Project tools ──────────────────────────────────────────────
 
@@ -518,6 +518,73 @@ def _register_full_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
         """
         bridge.destroy_emulator_session(binary_name, name_or_addr)
         return {"status": "destroyed", "binary_name": binary_name, "function": name_or_addr}
+
+    # ── Server tools ──────────────────────────────────────────────
+
+    @mcp.tool()
+    def connect_server(
+        host: str, port: int = 13100, username: str = "ghidra", password: str | None = None
+    ) -> dict[str, Any]:
+        """Connect to a Ghidra server for collaborative reverse engineering.
+
+        Args:
+            host: Ghidra server hostname or IP address.
+            port: Ghidra server port (default: 13100).
+            username: Username for authentication.
+            password: Optional password (omit for anonymous/passwordless servers).
+        """
+        return bridge.connect_server(host, port=port, username=username, password=password)
+
+    @mcp.tool()
+    def disconnect_server() -> dict[str, Any]:
+        """Disconnect from the Ghidra server and release all server-opened programs."""
+        return bridge.disconnect_server()
+
+    @mcp.tool()
+    def list_repositories() -> list[dict[str, Any]]:
+        """List available repositories on the connected Ghidra server."""
+        return bridge.list_repositories()
+
+    @mcp.tool()
+    def list_server_files(
+        repository_name: str, folder_path: str = "/"
+    ) -> dict[str, Any]:
+        """List files and subfolders in a Ghidra server repository.
+
+        Args:
+            repository_name: Name of the repository.
+            folder_path: Folder path within the repository (default: root "/").
+        """
+        return bridge.list_server_files(repository_name, folder_path=folder_path)
+
+    @mcp.tool()
+    def open_from_server(
+        repository_name: str, file_path: str, checkout: bool = True
+    ) -> dict[str, Any]:
+        """Open a program from the Ghidra server for analysis.
+
+        Once opened, all analysis tools work on it (decompile, list_functions, etc.).
+
+        Args:
+            repository_name: Name of the repository.
+            file_path: Path to the file within the repository (e.g., "/malware/sample.exe").
+            checkout: If True, exclusively check out the file for editing (default: True).
+        """
+        return bridge.open_from_server(repository_name, file_path, checkout=checkout)
+
+    @mcp.tool()
+    def checkin_file(
+        binary_name: str, comment: str = "Changes from MCP analysis"
+    ) -> dict[str, Any]:
+        """Check in changes to a server-opened program.
+
+        Saves all modifications (renames, annotations, etc.) back to the Ghidra server.
+
+        Args:
+            binary_name: Name of the binary (as shown in list_binaries).
+            comment: Check-in comment describing the changes.
+        """
+        return bridge.checkin_file(binary_name, comment=comment)
 
     # ── Resources ──────────────────────────────────────────────────
 

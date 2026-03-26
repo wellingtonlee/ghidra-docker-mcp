@@ -589,3 +589,100 @@ class TestEmulationTools:
             "current_pc", "registers", "memory",
         }
         assert set(result.keys()) == expected_keys
+
+
+class TestServerTools:
+    def test_connect_server(self, mcp_server):
+        server, bridge = mcp_server
+        result = bridge.connect_server("ghidra.example.com", port=13100, username="analyst")
+        assert result["status"] == "connected"
+        assert result["host"] == "ghidra.example.com"
+        assert "test-repo" in result["repositories"]
+
+    def test_disconnect_server(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        result = bridge.disconnect_server()
+        assert result["status"] == "disconnected"
+
+    def test_disconnect_not_connected_raises(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(RuntimeError):
+            bridge.disconnect_server()
+
+    def test_list_repositories(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        repos = bridge.list_repositories()
+        assert len(repos) > 0
+        assert repos[0]["name"] == "test-repo"
+
+    def test_list_repositories_not_connected_raises(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(RuntimeError):
+            bridge.list_repositories()
+
+    def test_list_server_files(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        result = bridge.list_server_files("test-repo")
+        assert result["repository"] == "test-repo"
+        assert len(result["files"]) > 0
+
+    def test_list_server_files_bad_repo_raises(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        with pytest.raises(KeyError):
+            bridge.list_server_files("nonexistent-repo")
+
+    def test_open_from_server(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        result = bridge.open_from_server("test-repo", "/malware.exe")
+        assert result["name"] == "malware.exe"
+        assert result["source"] == "server"
+        assert result["checked_out"] is True
+        assert "malware.exe" in bridge.list_binaries()
+
+    def test_open_from_server_enables_analysis(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        bridge.open_from_server("test-repo", "/malware.exe")
+        result = bridge.list_functions("malware.exe")
+        assert "functions" in result
+
+    def test_checkin_file(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        bridge.open_from_server("test-repo", "/malware.exe")
+        result = bridge.checkin_file("malware.exe", comment="Renamed functions")
+        assert result["status"] == "checked_in"
+
+    def test_checkin_not_from_server_raises(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        bridge.import_binary("/tmp/local.elf")
+        with pytest.raises(KeyError):
+            bridge.checkin_file("local.elf")
+
+    def test_disconnect_cleans_server_programs(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.connect_server("ghidra.example.com")
+        bridge.open_from_server("test-repo", "/malware.exe")
+        assert "malware.exe" in bridge.list_binaries()
+        bridge.disconnect_server()
+        assert "malware.exe" not in bridge.list_binaries()
+
+    def test_disconnect_preserves_local_programs(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/local.elf")
+        bridge.connect_server("ghidra.example.com")
+        bridge.open_from_server("test-repo", "/malware.exe")
+        bridge.disconnect_server()
+        assert "local.elf" in bridge.list_binaries()
+        assert "malware.exe" not in bridge.list_binaries()
+
+    def test_connect_with_password(self, mcp_server):
+        server, bridge = mcp_server
+        result = bridge.connect_server("ghidra.example.com", username="user", password="secret")
+        assert result["status"] == "connected"

@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Ghidra Server connectivity** — 6 new tools for collaborative reverse engineering: `connect_server`, `disconnect_server`, `list_repositories`, `list_server_files`, `open_from_server`, `checkin_file`. Programs opened from the server work with all existing analysis tools.
 - `rename_variable` tool: rename parameters and local variables within a function.
 - `rename_label` tool: rename symbols/labels at addresses in the program's symbol table.
 - Client configuration examples for Claude Code, OpenCode, and Continue.dev in README.

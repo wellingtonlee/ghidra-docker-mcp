@@ -78,6 +78,14 @@ class GhidraBridge:
         self._flat_api: Any = None
         self._started = False
 
+        # Server connectivity state
+        self._server: Any = None
+        self._server_host: str | None = None
+        self._server_port: int | None = None
+        self._server_repos: dict[str, Any] = {}
+        self._server_files: dict[str, Any] = {}  # binary_name -> DomainFile
+        self._server_project: Any = None
+
         self._analysis_timeout = int(
             os.environ.get("GHIDRA_ANALYSIS_TIMEOUT_SECONDS", "300")
         )
@@ -250,6 +258,16 @@ class GhidraBridge:
                 emu.dispose()
             except Exception:
                 logger.warning("Failed to dispose emulator session %s", key)
+
+        # Undo server checkout if this binary came from a server
+        domain_file = self._server_files.pop(binary_name, None)
+        if domain_file is not None:
+            try:
+                if domain_file.isCheckedOut():
+                    from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+                    domain_file.undoCheckout(False, ConsoleTaskMonitor())
+            except Exception:
+                logger.warning("Failed to undo checkout for '%s'", binary_name)
 
         self._project.close(program)
         del self._programs[binary_name]
@@ -1381,8 +1399,261 @@ class GhidraBridge:
         if emu is not None:
             emu.dispose()
 
+    # ── Server connectivity ─────────────────────────────────────
+
+    def _ensure_server_connected(self) -> None:
+        if self._server is None:
+            raise RuntimeError(
+                "Not connected to a Ghidra server. Use connect_server first."
+            )
+
+    def _get_or_open_repo(self, repository_name: str) -> Any:
+        if repository_name in self._server_repos:
+            return self._server_repos[repository_name]
+        repo = self._server.getRepository(repository_name)
+        repo.connect()
+        self._server_repos[repository_name] = repo
+        return repo
+
+    def connect_server(
+        self, host: str, port: int = 13100, username: str = "ghidra", password: str | None = None
+    ) -> dict[str, Any]:
+        """Connect to a Ghidra server."""
+        self._ensure_started()
+
+        # Disconnect existing connection if any
+        if self._server is not None:
+            try:
+                self.disconnect_server()
+            except Exception:
+                logger.warning("Failed to disconnect existing server connection")
+
+        from ghidra.framework.client import ClientUtil  # type: ignore[import]
+
+        if password is not None:
+            from ghidra.framework.client import PasswordClientAuthenticator  # type: ignore[import]
+            auth = PasswordClientAuthenticator(username, password)
+            ClientUtil.setClientAuthenticator(auth)
+        else:
+            from ghidra.framework.client import HeadlessClientAuthenticator  # type: ignore[import]
+            HeadlessClientAuthenticator.installHeadlessClientAuthenticator(
+                username, None, False
+            )
+
+        server = ClientUtil.getRepositoryServer(host, port)
+        connected = server.connect()
+        if not connected:
+            error = server.getLastConnectError()
+            raise ConnectionError(
+                f"Failed to connect to Ghidra server at {host}:{port}: {error or 'unknown error'}"
+            )
+
+        self._server = server
+        self._server_host = host
+        self._server_port = port
+
+        repo_names = list(server.getRepositoryNames())
+
+        return {
+            "status": "connected",
+            "host": host,
+            "port": port,
+            "username": username,
+            "repositories": repo_names,
+        }
+
+    def disconnect_server(self) -> dict[str, Any]:
+        """Disconnect from the Ghidra server and release all server-opened programs."""
+        self._ensure_server_connected()
+
+        host = self._server_host
+        port = self._server_port
+
+        # Release checked-out files and remove server programs
+        for name in list(self._server_files.keys()):
+            domain_file = self._server_files[name]
+            try:
+                if domain_file.isCheckedOut():
+                    from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+                    domain_file.undoCheckout(False, ConsoleTaskMonitor())
+            except Exception:
+                logger.warning("Failed to undo checkout for '%s' during disconnect", name)
+
+            # Clean up decompiler and emulators for this binary
+            decomp = self._decompilers.pop(name, None)
+            if decomp is not None:
+                try:
+                    decomp.dispose()
+                except Exception:
+                    pass
+            keys_to_remove = [k for k in self._emulators if k.startswith(f"{name}:")]
+            for key in keys_to_remove:
+                emu = self._emulators.pop(key)
+                try:
+                    emu.dispose()
+                except Exception:
+                    pass
+            self._programs.pop(name, None)
+
+        self._server_files.clear()
+        self._server_repos.clear()
+
+        if self._server_project is not None:
+            try:
+                self._server_project.close()
+            except Exception:
+                logger.warning("Failed to close server project")
+            self._server_project = None
+
+        self._server.disconnect()
+        self._server = None
+        self._server_host = None
+        self._server_port = None
+
+        return {"status": "disconnected", "host": host, "port": port}
+
+    def list_repositories(self) -> list[dict[str, Any]]:
+        """List available repositories on the connected Ghidra server."""
+        self._ensure_server_connected()
+        repo_names = list(self._server.getRepositoryNames())
+        return [{"name": name} for name in repo_names]
+
+    def list_server_files(
+        self, repository_name: str, folder_path: str = "/"
+    ) -> dict[str, Any]:
+        """List files and subfolders in a Ghidra server repository."""
+        self._ensure_server_connected()
+
+        try:
+            repo = self._get_or_open_repo(repository_name)
+        except Exception:
+            raise KeyError(f"Repository '{repository_name}' not found or access denied.")
+
+        subfolders = list(repo.getSubfolderList(folder_path))
+        items = list(repo.getItemList(folder_path))
+        files = []
+        for item in items:
+            files.append({
+                "name": item.getName(),
+                "path": f"{folder_path.rstrip('/')}/{item.getName()}",
+                "content_type": str(item.getContentType()),
+                "version": item.getVersion(),
+            })
+
+        return {
+            "repository": repository_name,
+            "folder": folder_path,
+            "subfolders": subfolders,
+            "files": files,
+        }
+
+    def open_from_server(
+        self, repository_name: str, file_path: str, checkout: bool = True
+    ) -> dict[str, Any]:
+        """Open a program from the Ghidra server for analysis."""
+        self._ensure_started()
+        self._ensure_server_connected()
+
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+        monitor = ConsoleTaskMonitor()
+
+        # Create/open a shared local project linked to this repo
+        if self._server_project is None:
+            from ghidra.framework.model import ProjectLocator  # type: ignore[import]
+            from ghidra.framework.project import DefaultProjectManager  # type: ignore[import]
+
+            cache_dir = self.project_dir / "_server_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            locator = ProjectLocator(str(cache_dir), f"server_{repository_name}")
+            pm = DefaultProjectManager.getInstance()
+            repo = self._get_or_open_repo(repository_name)
+            self._server_project = pm.createProject(locator, repo, False)
+
+        project_data = self._server_project.getProjectData()
+        domain_file = project_data.getFile(file_path)
+        if domain_file is None:
+            raise KeyError(
+                f"File '{file_path}' not found in repository '{repository_name}'."
+            )
+
+        binary_name = domain_file.getName()
+
+        # Check for name collision with local binaries
+        if binary_name in self._programs and binary_name not in self._server_files:
+            raise ValueError(
+                f"A locally imported binary named '{binary_name}' already exists. "
+                f"Delete it first before opening from server."
+            )
+
+        checked_out = False
+        if checkout:
+            if not domain_file.isCheckedOut():
+                domain_file.checkout(True, monitor)
+            checked_out = domain_file.isCheckedOut()
+
+        # Open the program
+        if checked_out:
+            program = domain_file.getDomainObject(self, True, False, monitor)
+        else:
+            program = domain_file.getReadOnlyDomainObject(self, -1, False, monitor)
+
+        self._programs[binary_name] = program
+        self._server_files[binary_name] = domain_file
+
+        # Initialize decompiler
+        try:
+            self._init_decompiler(binary_name, program)
+        except Exception:
+            logger.warning("Decompiler init failed for server file '%s'", binary_name)
+
+        info = self.get_binary_info(binary_name)
+        return {
+            "source": "server",
+            "repository": repository_name,
+            "path": file_path,
+            "checked_out": checked_out,
+            **info,
+        }
+
+    def checkin_file(
+        self, binary_name: str, comment: str = "Changes from MCP analysis"
+    ) -> dict[str, Any]:
+        """Check in changes to a server-opened program."""
+        self._ensure_server_connected()
+
+        domain_file = self._server_files.get(binary_name)
+        if domain_file is None:
+            raise KeyError(
+                f"Binary '{binary_name}' was not opened from server. "
+                f"Use open_from_server first."
+            )
+
+        if not domain_file.isCheckedOut():
+            raise RuntimeError(
+                f"Binary '{binary_name}' is not checked out. "
+                f"Open it with checkout=True to enable checkin."
+            )
+
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+        monitor = ConsoleTaskMonitor()
+
+        # Save current program state
+        program = self._programs.get(binary_name)
+        if program is not None:
+            program.save(comment, monitor)
+
+        # Check in to server
+        domain_file.checkin(None, comment, False, monitor)
+
+        return {
+            "status": "checked_in",
+            "binary_name": binary_name,
+            "comment": comment,
+        }
+
     def close(self) -> None:
-        """Close all programs, decompilers, emulators, and the project."""
+        """Close all programs, decompilers, emulators, server connection, and the project."""
         for name, decomp in self._decompilers.items():
             try:
                 decomp.dispose()
@@ -1398,6 +1669,13 @@ class GhidraBridge:
                 logger.warning("Failed to dispose emulator session %s", key)
 
         self._emulators.clear()
+
+        # Disconnect server if connected
+        if self._server is not None:
+            try:
+                self.disconnect_server()
+            except Exception:
+                logger.warning("Failed to disconnect from server during close")
 
         if self._project is not None:
             try:

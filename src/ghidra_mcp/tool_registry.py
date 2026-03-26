@@ -205,4 +205,44 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
             {"name": "name_or_addr", "type": "string", "required": True},
         ],
     },
+    # ── Server tools ──────────────────────────────────────────────
+    "connect_server": {
+        "description": "Connect to a Ghidra server for collaborative reverse engineering.",
+        "parameters": [
+            {"name": "host", "type": "string", "required": True},
+            {"name": "port", "type": "integer", "required": False, "default": 13100},
+            {"name": "username", "type": "string", "required": False, "default": "ghidra"},
+            {"name": "password", "type": "string", "required": False, "default": None},
+        ],
+    },
+    "disconnect_server": {
+        "description": "Disconnect from the Ghidra server and release all server-opened programs.",
+        "parameters": [],
+    },
+    "list_repositories": {
+        "description": "List available repositories on the connected Ghidra server.",
+        "parameters": [],
+    },
+    "list_server_files": {
+        "description": "List files and subfolders in a Ghidra server repository.",
+        "parameters": [
+            {"name": "repository_name", "type": "string", "required": True},
+            {"name": "folder_path", "type": "string", "required": False, "default": "/"},
+        ],
+    },
+    "open_from_server": {
+        "description": "Open a program from the Ghidra server for analysis. Once opened, all analysis tools work on it.",
+        "parameters": [
+            {"name": "repository_name", "type": "string", "required": True},
+            {"name": "file_path", "type": "string", "required": True},
+            {"name": "checkout", "type": "boolean", "required": False, "default": True},
+        ],
+    },
+    "checkin_file": {
+        "description": "Check in changes to a server-opened program back to the Ghidra server.",
+        "parameters": [
+            {"name": "binary_name", "type": "string", "required": True},
+            {"name": "comment", "type": "string", "required": False, "default": "Changes from MCP analysis"},
+        ],
+    },
 }

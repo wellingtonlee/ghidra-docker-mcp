@@ -14,6 +14,15 @@ class MockGhidraBridge:
     def __init__(self) -> None:
         self._programs: dict[str, dict[str, Any]] = {}
         self._emulator_sessions: dict[str, dict[str, Any]] = {}
+        self._server_connected = False
+        self._server_host: str | None = None
+        self._server_repos: dict[str, list[dict[str, Any]]] = {
+            "test-repo": [
+                {"name": "malware.exe", "path": "/malware.exe", "content_type": "Program", "version": 3},
+                {"name": "sample.dll", "path": "/samples/sample.dll", "content_type": "Program", "version": 1},
+            ],
+        }
+        self._server_files: dict[str, str] = {}
 
     def start(self) -> None:
         pass
@@ -402,9 +411,79 @@ class MockGhidraBridge:
         session_key = f"{binary_name}:{name_or_addr}"
         self._emulator_sessions.pop(session_key, None)
 
+    # ── Server mock methods ──────────────────────────────────────
+
+    def connect_server(
+        self, host: str, port: int = 13100, username: str = "ghidra", password: str | None = None
+    ) -> dict[str, Any]:
+        self._server_connected = True
+        self._server_host = host
+        return {
+            "status": "connected", "host": host, "port": port,
+            "username": username, "repositories": list(self._server_repos.keys()),
+        }
+
+    def disconnect_server(self) -> dict[str, Any]:
+        if not self._server_connected:
+            raise RuntimeError("Not connected to any Ghidra server.")
+        host = self._server_host
+        for name in list(self._server_files.keys()):
+            self._programs.pop(name, None)
+        self._server_files.clear()
+        self._server_connected = False
+        self._server_host = None
+        return {"status": "disconnected", "host": host, "port": 13100}
+
+    def list_repositories(self) -> list[dict[str, Any]]:
+        if not self._server_connected:
+            raise RuntimeError("Not connected to any Ghidra server. Use connect_server first.")
+        return [{"name": n} for n in self._server_repos]
+
+    def list_server_files(
+        self, repository_name: str, folder_path: str = "/"
+    ) -> dict[str, Any]:
+        if not self._server_connected:
+            raise RuntimeError("Not connected to any Ghidra server. Use connect_server first.")
+        if repository_name not in self._server_repos:
+            raise KeyError(f"Repository '{repository_name}' not found.")
+        return {
+            "repository": repository_name, "folder": folder_path,
+            "subfolders": [], "files": self._server_repos[repository_name],
+        }
+
+    def open_from_server(
+        self, repository_name: str, file_path: str, checkout: bool = True
+    ) -> dict[str, Any]:
+        if not self._server_connected:
+            raise RuntimeError("Not connected to any Ghidra server. Use connect_server first.")
+        binary_name = file_path.rsplit("/", 1)[-1]
+        info = {
+            "name": binary_name, "architecture": "x86", "address_size": 64,
+            "endian": "little", "format": "PE", "base_address": "0x00400000",
+            "entry_points": ["0x00401000"], "md5": "abc123", "sha256": "def456",
+            "file_path": file_path, "num_functions": 10, "memory_size": 8192,
+        }
+        self._programs[binary_name] = info
+        self._server_files[binary_name] = repository_name
+        return {
+            "source": "server", "repository": repository_name,
+            "path": file_path, "checked_out": checkout, **info,
+        }
+
+    def checkin_file(
+        self, binary_name: str, comment: str = "Changes from MCP analysis"
+    ) -> dict[str, Any]:
+        if not self._server_connected:
+            raise RuntimeError("Not connected to any Ghidra server. Use connect_server first.")
+        if binary_name not in self._server_files:
+            raise KeyError(f"Binary '{binary_name}' was not opened from server.")
+        return {"status": "checked_in", "binary_name": binary_name, "comment": comment}
+
     def close(self) -> None:
         self._programs.clear()
         self._emulator_sessions.clear()
+        self._server_files.clear()
+        self._server_connected = False
 
 
 @pytest.fixture

@@ -4,12 +4,13 @@ A [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Conte
 
 ## Features
 
-- **26 MCP tools** for binary analysis: decompilation, function listing, string search, cross-references, byte pattern search, malware-focused analysis, advanced RE tools (CFG, call graphs, instruction search), and emulation
+- **32 MCP tools** for binary analysis: decompilation, function listing, string search, cross-references, byte pattern search, malware-focused analysis, advanced RE tools (CFG, call graphs, instruction search), and emulation
 - **3 emulation tools** — emulate functions with automatic calling convention handling, single-step through code, read registers and memory
 - **5 MCP resources** for browsing binary metadata, functions, strings, and imports
 - **Multi-binary support** — analyze multiple binaries simultaneously in a single Ghidra project
 - **Malware analysis tools** — entropy analysis (packing detection), suspicious API categorization, section anomaly detection
-- **Code Mode** — token-saving operating mode that exposes only 2 tools (`search` + `execute`) instead of all 26, for LLM-efficient usage
+- **Code Mode** — token-saving operating mode that exposes only 2 tools (`search` + `execute`) instead of all 32, for LLM-efficient usage
+- **Ghidra Server** — connect to a shared Ghidra server for collaborative reverse engineering with checkout/checkin workflow
 - **Docker or local** — runs in an isolated container or directly on your machine via stdio transport
 - **PyGhidra 3.0** — direct Ghidra Java API access via in-process JVM (no Ghidra scripts needed)
 
@@ -21,7 +22,7 @@ A [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Conte
 # Build the image
 docker compose build
 
-# Run in full mode (all 26 tools)
+# Run in full mode (all 32 tools)
 docker compose run --rm -i ghidra-mcp
 
 # Run in code mode (2 tools: search + execute, saves tokens)
@@ -57,7 +58,7 @@ pip install -e .
 # Activate the virtual environment first
 source venv/bin/activate
 
-# Full mode (default) — all 26 tools
+# Full mode (default) — all 32 tools
 ghidra-mcp
 
 # Code mode — 2 meta-tools (search + execute)
@@ -234,7 +235,7 @@ The server supports two operating modes, selectable via the `--mode` flag:
 
 | Mode | Flag | Tools Registered | Use Case |
 |------|------|-----------------|----------|
-| **Full** | `--mode full` (default) | All 26 tools + 5 resources | Direct tool access, best for exploration and interactive use |
+| **Full** | `--mode full` (default) | All 32 tools + 5 resources | Direct tool access, best for exploration and interactive use |
 | **Code** | `--mode code` | 2 tools (`search` + `execute`) | Token-efficient, best for automated pipelines and cost-sensitive usage |
 
 Both modes provide identical analytical capabilities — Code Mode simply routes all calls through a dynamic dispatcher instead of registering each tool individually.
@@ -293,6 +294,43 @@ Emulate functions using Ghidra's `EmulatorHelper` API. The emulator automaticall
 | `emulate_function` | Emulate a function with optional integer arguments, get return value |
 | `emulate_step` | Single-step an existing emulator session, read registers and memory |
 | `emulate_session_destroy` | Destroy an emulator session and free its resources |
+
+### Server Connectivity
+
+Connect to a shared Ghidra server for collaborative reverse engineering. Programs opened from the server are available to all analysis tools. Supports checkout/checkin workflow with exclusive locking.
+
+| Tool | Description |
+|------|-------------|
+| `connect_server` | Connect to a Ghidra server (host, port, username, optional password) |
+| `disconnect_server` | Disconnect from server, release checkouts, clean up |
+| `list_repositories` | List available repositories on the connected server |
+| `list_server_files` | List files and subfolders in a server repository |
+| `open_from_server` | Open a program from the server for analysis (with optional checkout) |
+| `checkin_file` | Check in changes back to the Ghidra server |
+
+#### Server Workflow
+
+```
+# 1. Connect to the Ghidra server
+connect_server(host="ghidra.example.com", port=13100, username="analyst")
+
+# 2. Browse available repositories and files
+list_repositories()
+list_server_files(repository_name="malware-lab")
+
+# 3. Open a program (checkout for editing)
+open_from_server(repository_name="malware-lab", file_path="/samples/trojan.exe", checkout=True)
+
+# 4. Analyze with any tool — decompile, rename functions, etc.
+decompile_function(binary_name="trojan.exe", name_or_addr="main")
+rename_function(binary_name="trojan.exe", old_name="FUN_00401000", new_name="decrypt_payload")
+
+# 5. Save changes back to the server
+checkin_file(binary_name="trojan.exe", comment="Identified decryption routine")
+
+# 6. Disconnect when done
+disconnect_server()
+```
 
 #### Emulation Workflow
 
@@ -370,7 +408,7 @@ Search the tool catalog. Returns tool names, descriptions, and full parameter si
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | string | No | Substring to filter tool names and descriptions. Returns all 26 tools if omitted. |
+| `query` | string | No | Substring to filter tool names and descriptions. Returns all 32 tools if omitted. |
 
 **Example — find emulation tools:**
 ```
@@ -461,7 +499,7 @@ pip install -e ".[dev]"
 # Run tests (uses mocked GhidraBridge, no Ghidra needed)
 pytest tests/ -v
 
-# 111 tests covering full mode, emulation, and code mode
+# 131 tests covering full mode, emulation, server, and code mode
 ```
 
 ## Architecture
