@@ -1,6 +1,6 @@
 # Ghidra MCP Server
 
-A Dockerized [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), designed for binary analysis and malware reverse engineering with AI assistants.
+A [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), designed for binary analysis and malware reverse engineering with AI assistants. Runs locally or in Docker.
 
 ## Features
 
@@ -10,7 +10,7 @@ A Dockerized [Ghidra](https://ghidra-sre.org/) headless server exposed via the [
 - **Multi-binary support** — analyze multiple binaries simultaneously in a single Ghidra project
 - **Malware analysis tools** — entropy analysis (packing detection), suspicious API categorization, section anomaly detection
 - **Code Mode** — token-saving operating mode that exposes only 2 tools (`search` + `execute`) instead of all 24, for LLM-efficient usage
-- **Docker-first** — runs in an isolated container with stdio transport
+- **Docker or local** — runs in an isolated container or directly on your machine via stdio transport
 - **PyGhidra 3.0** — direct Ghidra Java API access via in-process JVM (no Ghidra scripts needed)
 
 ## Quick Start
@@ -58,19 +58,68 @@ To use Code Mode with Claude Desktop, add `"--mode", "code"` to the end of the `
 
 The Docker image builds natively on arm64. Since Ghidra releases don't include pre-built `linux_arm_64` decompiler binaries, the Dockerfile automatically builds the decompiler from source during `docker compose build` (adds ~2 min to build time, requires no extra configuration). If you encounter issues, you can force x86_64 emulation by uncommenting `platform: linux/amd64` in `docker-compose.yml` (slower due to Rosetta/QEMU).
 
-### Local Development
+### Local (no Docker)
 
-Requires Ghidra 12.0.4 installed and `GHIDRA_INSTALL_DIR` set.
+#### Prerequisites
+
+- Python 3.11+
+- Java 21+ (e.g., OpenJDK 21)
+- [Ghidra 12.0.4](https://github.com/NationalSecurityAgency/ghidra/releases)
+- `GHIDRA_INSTALL_DIR` environment variable pointing to your Ghidra installation
+
+#### Installation
 
 ```bash
-pip install -e ".[dev]"
-
-# Full mode (default)
-ghidra-mcp --project-dir ./projects --project-name my_project
-
-# Code mode
-ghidra-mcp --project-dir ./projects --project-name my_project --mode code
+pip install -e .
 ```
+
+#### Usage
+
+```bash
+# Full mode (default) — all 24 tools
+ghidra-mcp
+
+# Code mode — 2 meta-tools (search + execute)
+ghidra-mcp --mode code
+
+# Custom project directory and name
+ghidra-mcp --project-dir ~/my-projects --project-name my_project
+```
+
+#### Claude Desktop configuration
+
+**Full mode** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ghidra": {
+      "command": "ghidra-mcp",
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
+      }
+    }
+  }
+}
+```
+
+**Code mode** (add `--mode code`):
+
+```json
+{
+  "mcpServers": {
+    "ghidra": {
+      "command": "ghidra-mcp",
+      "args": ["--mode", "code"],
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
+      }
+    }
+  }
+}
+```
+
+> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
 
 ## Server Modes
 

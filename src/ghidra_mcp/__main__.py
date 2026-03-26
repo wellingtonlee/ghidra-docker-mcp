@@ -10,8 +10,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ghidra MCP Server")
     parser.add_argument(
         "--project-dir",
-        default="/home/ghidra/projects",
-        help="Directory for Ghidra projects (default: /home/ghidra/projects)",
+        default="./ghidra-projects",
+        help="Directory for Ghidra projects (default: ./ghidra-projects)",
     )
     parser.add_argument(
         "--project-name",
