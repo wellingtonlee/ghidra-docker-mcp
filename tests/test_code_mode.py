@@ -13,7 +13,7 @@ class TestToolRegistry:
     """Verify the registry structure is correct."""
 
     def test_registry_has_all_tools(self):
-        assert len(TOOL_REGISTRY) == 24
+        assert len(TOOL_REGISTRY) == 26
 
     def test_each_entry_has_required_keys(self):
         for name, info in TOOL_REGISTRY.items():
@@ -45,7 +45,7 @@ class TestSearch:
         results = []
         for name, info in TOOL_REGISTRY.items():
             results.append({"tool": name, "description": info["description"], "parameters": info["parameters"]})
-        assert len(results) == 24
+        assert len(results) == 26
 
     def test_search_with_query_filters(self, mcp_server_code_mode):
         server, bridge = mcp_server_code_mode
@@ -186,6 +186,32 @@ class TestDispatch:
         from ghidra_mcp.server import _dispatch
         result = _dispatch(bridge, "search_bytes", {"binary_name": "test.elf", "hex_pattern": "4D5A"})
         assert isinstance(result, list)
+
+    def test_dispatch_rename_variable(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        bridge.import_binary("/tmp/test.elf")
+        from ghidra_mcp.server import _dispatch
+        result = _dispatch(bridge, "rename_variable", {
+            "binary_name": "test.elf",
+            "function_name": "main",
+            "old_name": "local_var",
+            "new_name": "buffer_size",
+        })
+        assert result["old_name"] == "local_var"
+        assert result["new_name"] == "buffer_size"
+        assert result["function"] == "main"
+
+    def test_dispatch_rename_label(self, mcp_server_code_mode):
+        server, bridge = mcp_server_code_mode
+        bridge.import_binary("/tmp/test.elf")
+        from ghidra_mcp.server import _dispatch
+        result = _dispatch(bridge, "rename_label", {
+            "binary_name": "test.elf",
+            "old_name": "LAB_00101000",
+            "new_name": "loop_start",
+        })
+        assert result["old_name"] == "LAB_00101000"
+        assert result["new_name"] == "loop_start"
 
 
 class TestFullModeUnchanged:

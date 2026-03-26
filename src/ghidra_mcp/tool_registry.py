@@ -57,6 +57,23 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
             {"name": "new_name", "type": "string", "required": True},
         ],
     },
+    "rename_variable": {
+        "description": "Rename a variable (parameter or local) within a function.",
+        "parameters": [
+            {"name": "binary_name", "type": "string", "required": True},
+            {"name": "function_name", "type": "string", "required": True},
+            {"name": "old_name", "type": "string", "required": True},
+            {"name": "new_name", "type": "string", "required": True},
+        ],
+    },
+    "rename_label": {
+        "description": "Rename a symbol/label in the program.",
+        "parameters": [
+            {"name": "binary_name", "type": "string", "required": True},
+            {"name": "old_name", "type": "string", "required": True},
+            {"name": "new_name", "type": "string", "required": True},
+        ],
+    },
     "list_strings": {
         "description": "List defined strings in a binary with pagination.",
         "parameters": [

@@ -383,6 +383,92 @@ class GhidraBridge:
             "address": str(func.getEntryPoint()),
         }
 
+    def rename_variable(
+        self, binary_name: str, function_name: str, old_name: str, new_name: str
+    ) -> dict[str, Any]:
+        """Rename a variable (parameter or local) within a function."""
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, function_name)
+        if func is None:
+            raise KeyError(f"Function '{function_name}' not found in '{binary_name}'.")
+
+        target_var = None
+        for var in func.getAllVariables():
+            if var.getName() == old_name:
+                target_var = var
+                break
+
+        if target_var is None:
+            raise KeyError(
+                f"Variable '{old_name}' not found in function '{function_name}' of '{binary_name}'."
+            )
+
+        from ghidra.program.model.symbol import SourceType  # type: ignore[import]
+
+        variable_type = "parameter" if target_var.isParameter() else "local"
+        storage = str(target_var.getVariableStorage())
+
+        tx_id = program.startTransaction("Rename variable")
+        try:
+            target_var.setName(new_name, SourceType.USER_DEFINED)
+            program.endTransaction(tx_id, True)
+        except Exception:
+            program.endTransaction(tx_id, False)
+            raise
+
+        return {
+            "function": func.getName(),
+            "old_name": old_name,
+            "new_name": new_name,
+            "variable_type": variable_type,
+            "storage": storage,
+        }
+
+    def rename_label(
+        self, binary_name: str, old_name: str, new_name: str
+    ) -> dict[str, Any]:
+        """Rename a symbol/label in the program's symbol table."""
+        program = self.get_program(binary_name)
+        sym_table = program.getSymbolTable()
+
+        symbol = None
+        symbols = sym_table.getGlobalSymbols(old_name)
+        if symbols and len(symbols) > 0:
+            symbol = symbols[0]
+
+        if symbol is None:
+            try:
+                addr_str = old_name.removeprefix("0x")
+                addr_factory = program.getAddressFactory()
+                addr = addr_factory.getDefaultAddressSpace().getAddress(int(addr_str, 16))
+                symbol = sym_table.getPrimarySymbol(addr)
+            except (ValueError, Exception):
+                pass
+
+        if symbol is None:
+            raise KeyError(f"Symbol/label '{old_name}' not found in '{binary_name}'.")
+
+        from ghidra.program.model.symbol import SourceType  # type: ignore[import]
+
+        old_sym_name = symbol.getName()
+        address = str(symbol.getAddress())
+        symbol_type = str(symbol.getSymbolType())
+
+        tx_id = program.startTransaction("Rename label")
+        try:
+            symbol.setName(new_name, SourceType.USER_DEFINED)
+            program.endTransaction(tx_id, True)
+        except Exception:
+            program.endTransaction(tx_id, False)
+            raise
+
+        return {
+            "old_name": old_sym_name,
+            "new_name": new_name,
+            "address": address,
+            "symbol_type": symbol_type,
+        }
+
     def _resolve_function(self, program: Any, name_or_addr: str) -> Any:
         """Resolve a function by name or hex address."""
         fm = program.getFunctionManager()

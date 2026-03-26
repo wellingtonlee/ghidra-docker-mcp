@@ -21,7 +21,7 @@ A [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Conte
 # Build the image
 docker compose build
 
-# Run in full mode (all 24 tools)
+# Run in full mode (all 26 tools)
 docker compose run --rm -i ghidra-mcp
 
 # Run in code mode (2 tools: search + execute, saves tokens)
@@ -57,7 +57,7 @@ pip install -e .
 # Activate the virtual environment first
 source venv/bin/activate
 
-# Full mode (default) — all 24 tools
+# Full mode (default) — all 26 tools
 ghidra-mcp
 
 # Code mode — 2 meta-tools (search + execute)
@@ -234,7 +234,7 @@ The server supports two operating modes, selectable via the `--mode` flag:
 
 | Mode | Flag | Tools Registered | Use Case |
 |------|------|-----------------|----------|
-| **Full** | `--mode full` (default) | All 24 tools + 5 resources | Direct tool access, best for exploration and interactive use |
+| **Full** | `--mode full` (default) | All 26 tools + 5 resources | Direct tool access, best for exploration and interactive use |
 | **Code** | `--mode code` | 2 tools (`search` + `execute`) | Token-efficient, best for automated pipelines and cost-sensitive usage |
 
 Both modes provide identical analytical capabilities — Code Mode simply routes all calls through a dynamic dispatcher instead of registering each tool individually.
@@ -368,7 +368,7 @@ Search the tool catalog. Returns tool names, descriptions, and full parameter si
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | string | No | Substring to filter tool names and descriptions. Returns all 24 tools if omitted. |
+| `query` | string | No | Substring to filter tool names and descriptions. Returns all 26 tools if omitted. |
 
 **Example — find emulation tools:**
 ```

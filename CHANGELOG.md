@@ -4,6 +4,8 @@
 
 ### Added
 
+- `rename_variable` tool: rename parameters and local variables within a function.
+- `rename_label` tool: rename symbols/labels at addresses in the program's symbol table.
 - Client configuration examples for Claude Code, OpenCode, and Continue.dev in README.
 - Consolidated all MCP client configs into a dedicated "Client Configuration" section.
 

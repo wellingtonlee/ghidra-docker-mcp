@@ -66,6 +66,25 @@ class TestFunctionTools:
         assert result["old_name"] == "main"
         assert result["new_name"] == "entry_main"
 
+    def test_rename_variable(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.rename_variable("test.elf", "main", "local_var", "buffer_size")
+        assert result["function"] == "main"
+        assert result["old_name"] == "local_var"
+        assert result["new_name"] == "buffer_size"
+        assert result["variable_type"] in ("parameter", "local")
+        assert "storage" in result
+
+    def test_rename_label(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.rename_label("test.elf", "LAB_00101000", "loop_start")
+        assert result["old_name"] == "LAB_00101000"
+        assert result["new_name"] == "loop_start"
+        assert "address" in result
+        assert "symbol_type" in result
+
 
 class TestStringTools:
     def test_list_strings(self, mcp_server):
@@ -318,6 +337,16 @@ class TestBinaryNotFound:
         server, bridge = mcp_server
         with pytest.raises(KeyError):
             bridge.emulate_step("nonexistent.elf", "main")
+
+    def test_rename_variable_binary_not_found(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(KeyError):
+            bridge.rename_variable("nonexistent.elf", "main", "var", "new_var")
+
+    def test_rename_label_binary_not_found(self, mcp_server):
+        server, bridge = mcp_server
+        with pytest.raises(KeyError):
+            bridge.rename_label("nonexistent.elf", "LAB_00101000", "new_label")
 
     def test_emulate_session_destroy_binary_not_found(self, mcp_server):
         server, bridge = mcp_server

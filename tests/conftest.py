@@ -90,6 +90,27 @@ class MockGhidraBridge:
         self._check_binary(binary_name)
         return {"old_name": old_name, "new_name": new_name, "address": "0x00101000"}
 
+    def rename_variable(
+        self, binary_name: str, function_name: str, old_name: str, new_name: str
+    ) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        return {
+            "function": function_name,
+            "old_name": old_name,
+            "new_name": new_name,
+            "variable_type": "local",
+            "storage": "Stack[-0x10]",
+        }
+
+    def rename_label(self, binary_name: str, old_name: str, new_name: str) -> dict[str, Any]:
+        self._check_binary(binary_name)
+        return {
+            "old_name": old_name,
+            "new_name": new_name,
+            "address": "0x00101000",
+            "symbol_type": "Label",
+        }
+
     def list_strings(
         self, binary_name: str, min_length: int = 4, offset: int = 0, limit: int = 100
     ) -> dict[str, Any]:

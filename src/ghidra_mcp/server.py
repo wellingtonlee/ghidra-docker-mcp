@@ -25,7 +25,7 @@ def create_server(
     Args:
         project_dir: Directory for Ghidra projects.
         project_name: Ghidra project name.
-        mode: "full" registers all 24 tools + 5 resources;
+        mode: "full" registers all 26 tools + 5 resources;
               "code" registers only search + execute (saves tokens).
     """
     mcp = FastMCP(
@@ -135,7 +135,7 @@ def _register_code_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
 
 
 def _register_full_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
-    """Register all 24 tools and 5 resources for full mode."""
+    """Register all 26 tools and 5 resources for full mode."""
 
     # ── Project tools ──────────────────────────────────────────────
 
@@ -226,6 +226,33 @@ def _register_full_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
             new_name: New name for the function.
         """
         return bridge.rename_function(binary_name, old_name, new_name)
+
+    @mcp.tool()
+    def rename_variable(
+        binary_name: str, function_name: str, old_name: str, new_name: str
+    ) -> dict[str, Any]:
+        """Rename a variable (parameter or local) within a function.
+
+        Args:
+            binary_name: Name of the binary.
+            function_name: Function name or hex address containing the variable.
+            old_name: Current variable name.
+            new_name: New name for the variable.
+        """
+        return bridge.rename_variable(binary_name, function_name, old_name, new_name)
+
+    @mcp.tool()
+    def rename_label(
+        binary_name: str, old_name: str, new_name: str
+    ) -> dict[str, Any]:
+        """Rename a symbol/label in the program.
+
+        Args:
+            binary_name: Name of the binary.
+            old_name: Current label name or hex address.
+            new_name: New name for the label.
+        """
+        return bridge.rename_label(binary_name, old_name, new_name)
 
     # ── String tools ───────────────────────────────────────────────
 
