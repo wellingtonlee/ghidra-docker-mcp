@@ -18,12 +18,4 @@ services:
 volumes:
   ghidra-projects:
 
-# Claude Desktop configuration:
-# {
-#   "mcpServers": {
-#     "ghidra": {
-#       "command": "docker",
-#       "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"]
-#     }
-#   }
-# }
+# MCP client configuration: see README.md § Client Configuration

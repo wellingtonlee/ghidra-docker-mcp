@@ -28,31 +28,7 @@ docker compose run --rm -i ghidra-mcp
 docker compose run --rm -i ghidra-mcp --mode code
 ```
 
-**Claude Desktop configuration** (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "ghidra": {
-      "command": "docker",
-      "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"]
-    }
-  }
-}
-```
-
-To use Code Mode with Claude Desktop, add `"--mode", "code"` to the end of the `args` array:
-
-```json
-{
-  "mcpServers": {
-    "ghidra": {
-      "command": "docker",
-      "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp", "--mode", "code"]
-    }
-  }
-}
-```
+See [Client Configuration](#client-configuration) for setup with Claude Desktop, Claude Code, OpenCode, and Continue.dev.
 
 #### Apple Silicon
 
@@ -86,9 +62,30 @@ ghidra-mcp --mode code
 ghidra-mcp --project-dir ~/my-projects --project-name my_project
 ```
 
-#### Claude Desktop configuration
+See [Client Configuration](#client-configuration) for setup with Claude Desktop, Claude Code, OpenCode, and Continue.dev.
 
-**Full mode** (`claude_desktop_config.json`):
+## Client Configuration
+
+> All examples show **full mode**. For **code mode**, append `--mode code` (Docker: add `"--mode", "code"` to the args array; Local: add `"--mode", "code"` to args or the command).
+
+### Claude Desktop
+
+Config file: `claude_desktop_config.json`
+
+**Docker:**
+
+```json
+{
+  "mcpServers": {
+    "ghidra": {
+      "command": "docker",
+      "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"]
+    }
+  }
+}
+```
+
+**Local:**
 
 ```json
 {
@@ -103,19 +100,124 @@ ghidra-mcp --project-dir ~/my-projects --project-name my_project
 }
 ```
 
-**Code mode** (add `--mode code`):
+> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
+
+### Claude Code
+
+**Docker — via CLI:**
+
+```bash
+claude mcp add ghidra -- docker compose -f /path/to/docker-compose.yml run --rm -i ghidra-mcp
+```
+
+**Docker — via settings file** (`~/.claude/settings.json` or `.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "ghidra": {
+      "command": "docker",
+      "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"]
+    }
+  }
+}
+```
+
+**Local — via CLI:**
+
+```bash
+claude mcp add ghidra --env GHIDRA_INSTALL_DIR=/path/to/ghidra_12.0.4_PUBLIC -- ghidra-mcp
+```
+
+**Local — via settings file:**
 
 ```json
 {
   "mcpServers": {
     "ghidra": {
       "command": "ghidra-mcp",
-      "args": ["--mode", "code"],
       "env": {
         "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
       }
     }
   }
+}
+```
+
+> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block and `--env` flag.
+
+### OpenCode
+
+Config file: `opencode.json` (project root or `~/.config/opencode/opencode.json`)
+
+**Docker:**
+
+```json
+{
+  "mcp": {
+    "ghidra": {
+      "type": "local",
+      "command": ["docker", "compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**Local:**
+
+```json
+{
+  "mcp": {
+    "ghidra": {
+      "type": "local",
+      "command": ["ghidra-mcp"],
+      "environment": {
+        "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
+      },
+      "enabled": true
+    }
+  }
+}
+```
+
+> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `"environment"` block.
+
+### Continue.dev
+
+Config file: `.continue/mcpServers/ghidra.json`
+
+> **Note:** MCP tools are only available in Continue's **Agent mode**, not Chat mode.
+
+**Docker:**
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "Ghidra",
+      "type": "stdio",
+      "command": "docker",
+      "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "ghidra-mcp"]
+    }
+  ]
+}
+```
+
+**Local:**
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "Ghidra",
+      "type": "stdio",
+      "command": "ghidra-mcp",
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
+      }
+    }
+  ]
 }
 ```
 
@@ -358,7 +460,7 @@ pytest tests/ -v
 ## Architecture
 
 ```
-Client (Claude Desktop)
+MCP Client (Claude Desktop / Claude Code / OpenCode / Continue.dev / ...)
   ↕ stdio
 FastMCP Server (server.py)
   ├── Full Mode: 24 @mcp.tool() + 5 @mcp.resource()

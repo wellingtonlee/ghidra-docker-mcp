@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3] - 2026-03-26
+
+### Added
+
+- Client configuration examples for Claude Code, OpenCode, and Continue.dev in README.
+- Consolidated all MCP client configs into a dedicated "Client Configuration" section.
+
 ## [0.2.2] - 2026-03-17
 
 ### Fixed
