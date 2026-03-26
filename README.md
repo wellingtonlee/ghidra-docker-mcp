@@ -46,12 +46,17 @@ The Docker image builds natively on arm64. Since Ghidra releases don't include p
 #### Installation
 
 ```bash
+python -m venv venv
+source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -e .
 ```
 
 #### Usage
 
 ```bash
+# Activate the virtual environment first
+source venv/bin/activate
+
 # Full mode (default) — all 24 tools
 ghidra-mcp
 
@@ -91,7 +96,7 @@ Config file: `claude_desktop_config.json`
 {
   "mcpServers": {
     "ghidra": {
-      "command": "ghidra-mcp",
+      "command": "/path/to/venv/bin/ghidra-mcp",
       "env": {
         "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
       }
@@ -100,7 +105,7 @@ Config file: `claude_desktop_config.json`
 }
 ```
 
-> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
 
 ### Claude Code
 
@@ -110,7 +115,7 @@ Config file: `claude_desktop_config.json`
 claude mcp add ghidra -- docker compose -f /path/to/docker-compose.yml run --rm -i ghidra-mcp
 ```
 
-**Docker — via settings file** (`~/.claude/settings.json` or `.claude/settings.json`):
+**Docker — via project config** (`.mcp.json` in project root):
 
 ```json
 {
@@ -126,16 +131,16 @@ claude mcp add ghidra -- docker compose -f /path/to/docker-compose.yml run --rm 
 **Local — via CLI:**
 
 ```bash
-claude mcp add ghidra --env GHIDRA_INSTALL_DIR=/path/to/ghidra_12.0.4_PUBLIC -- ghidra-mcp
+claude mcp add ghidra --env GHIDRA_INSTALL_DIR=/path/to/ghidra_12.0.4_PUBLIC -- /path/to/venv/bin/ghidra-mcp
 ```
 
-**Local — via settings file:**
+**Local — via project config** (`.mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "ghidra": {
-      "command": "ghidra-mcp",
+      "command": "/path/to/venv/bin/ghidra-mcp",
       "env": {
         "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
       }
@@ -144,7 +149,7 @@ claude mcp add ghidra --env GHIDRA_INSTALL_DIR=/path/to/ghidra_12.0.4_PUBLIC -- 
 }
 ```
 
-> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block and `--env` flag.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block and `--env` flag.
 
 ### OpenCode
 
@@ -171,7 +176,7 @@ Config file: `opencode.json` (project root or `~/.config/opencode/opencode.json`
   "mcp": {
     "ghidra": {
       "type": "local",
-      "command": ["ghidra-mcp"],
+      "command": ["/path/to/venv/bin/ghidra-mcp"],
       "environment": {
         "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
       },
@@ -181,7 +186,7 @@ Config file: `opencode.json` (project root or `~/.config/opencode/opencode.json`
 }
 ```
 
-> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `"environment"` block.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `"environment"` block.
 
 ### Continue.dev
 
@@ -212,7 +217,7 @@ Config file: `.continue/mcpServers/ghidra.json`
     {
       "name": "Ghidra",
       "type": "stdio",
-      "command": "ghidra-mcp",
+      "command": "/path/to/venv/bin/ghidra-mcp",
       "env": {
         "GHIDRA_INSTALL_DIR": "/path/to/ghidra_12.0.4_PUBLIC"
       }
@@ -221,7 +226,7 @@ Config file: `.continue/mcpServers/ghidra.json`
 }
 ```
 
-> **Note:** If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
 
 ## Server Modes
 

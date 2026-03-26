@@ -7,6 +7,12 @@
 - Client configuration examples for Claude Code, OpenCode, and Continue.dev in README.
 - Consolidated all MCP client configs into a dedicated "Client Configuration" section.
 
+### Fixed
+
+- Claude Code config examples now use `.mcp.json` (project-level) instead of `.claude/settings.json`.
+- Local config examples use full venv path (`/path/to/venv/bin/ghidra-mcp`) instead of bare `ghidra-mcp`.
+- Installation instructions now include virtual environment setup.
+
 ## [0.2.2] - 2026-03-17
 
 ### Fixed
