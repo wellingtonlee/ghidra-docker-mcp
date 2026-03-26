@@ -499,7 +499,7 @@ pip install -e ".[dev]"
 # Run tests (uses mocked GhidraBridge, no Ghidra needed)
 pytest tests/ -v
 
-# 131 tests covering full mode, emulation, server, and code mode
+# 146 tests covering full mode, emulation, server, and code mode
 ```
 
 ## Architecture

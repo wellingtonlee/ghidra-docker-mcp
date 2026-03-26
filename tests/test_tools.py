@@ -590,6 +590,149 @@ class TestEmulationTools:
         }
         assert set(result.keys()) == expected_keys
 
+    # ── Group A: Return type / format validation ──────────────────
+
+    def test_emulate_function_return_types(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", args=[1, 2])
+        assert isinstance(result["return_value"], (int, type(None)))
+        assert isinstance(result["final_pc"], str)
+        assert result["final_pc"].startswith("0x")
+        assert isinstance(result["final_sp"], str)
+        assert result["final_sp"].startswith("0x")
+        assert isinstance(result["steps_executed"], int)
+
+    def test_emulate_step_register_hex_format(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main", read_registers=["RAX", "RBX"])
+        for reg_name in ["RAX", "RBX"]:
+            val = result["registers"][reg_name]
+            assert isinstance(val, str), f"Register {reg_name} should be a string"
+            assert val.startswith("0x"), f"Register {reg_name} should be hex: {val}"
+
+    def test_emulate_step_memory_hex_format(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step(
+            "test.elf", "main",
+            read_memory=[{"address": "0x00200000", "size": 8}],
+        )
+        assert len(result["memory"]) == 1
+        hex_str = result["memory"][0]["hex"]
+        assert isinstance(hex_str, str)
+        assert len(hex_str) == 16  # 8 bytes * 2 hex chars each
+        assert all(c in "0123456789abcdef" for c in hex_str)
+
+    # ── Group B: Timeout behavior ─────────────────────────────────
+
+    def test_emulate_function_timeout(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", max_steps=10)
+        assert result["timed_out"] is True
+        assert result["hit_breakpoint"] is False
+        assert result["steps_executed"] == 10
+
+    def test_emulate_function_max_steps_zero(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", max_steps=0)
+        assert result["steps_executed"] == 0
+        assert result["timed_out"] is True
+
+    def test_emulate_function_max_steps_one(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main", max_steps=1)
+        assert result["steps_executed"] == 1
+
+    def test_emulate_step_after_breakpoint(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main")
+        assert result["hit_breakpoint"] is True
+        # Stepping after breakpoint should still return a valid result
+        step_result = bridge.emulate_step("test.elf", "main", count=1)
+        assert "steps_executed" in step_result
+
+    # ── Group C: Session key resolution ───────────────────────────
+
+    def test_session_key_uses_function_name(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "main")
+        assert ":" in result["session_key"]
+        assert result["session_key"].startswith("test.elf:")
+
+    def test_emulate_function_by_address_session_key(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result = bridge.emulate_function("test.elf", "0x00101000")
+        # Session key should use the resolved function name, not the raw address
+        assert result["session_key"].startswith("test.elf:")
+
+    def test_emulate_step_requires_prior_emulate_function(self, mcp_server):
+        """Verify emulate_step raises KeyError without prior emulate_function."""
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        with pytest.raises(KeyError):
+            bridge.emulate_step("test.elf", "main")
+
+    # ── Group D: Memory read edge cases ───────────────────────────
+
+    def test_emulate_step_memory_default_size(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step(
+            "test.elf", "main",
+            read_memory=[{"address": "0x00200000"}],  # no "size" key
+        )
+        assert len(result["memory"]) == 1
+        # Default size is 16 → 32 hex chars
+        assert len(result["memory"][0]["hex"]) == 32
+
+    def test_emulate_step_memory_size_one(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step(
+            "test.elf", "main",
+            read_memory=[{"address": "0x00200000", "size": 1}],
+        )
+        assert len(result["memory"][0]["hex"]) == 2  # 1 byte = 2 hex chars
+
+    # ── Group E: Boundary step counts ─────────────────────────────
+
+    def test_emulate_step_negative_count(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main", count=-1)
+        assert result["steps_executed"] == 0
+
+    def test_emulate_step_large_count(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        bridge.emulate_function("test.elf", "main")
+        result = bridge.emulate_step("test.elf", "main", count=100000)
+        assert isinstance(result["steps_executed"], int)
+
+    # ── Group F: Lifecycle robustness ─────────────────────────────
+
+    def test_emulate_function_after_destroy_fresh_session(self, mcp_server):
+        server, bridge = mcp_server
+        bridge.import_binary("/tmp/test.elf")
+        result1 = bridge.emulate_function("test.elf", "main", args=[10])
+        bridge.destroy_emulator_session("test.elf", "main")
+        result2 = bridge.emulate_function("test.elf", "main", args=[20])
+        assert result2["session_key"] == result1["session_key"]
+        assert result2["return_value"] == 20
+
 
 class TestServerTools:
     def test_connect_server(self, mcp_server):

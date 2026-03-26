@@ -365,17 +365,22 @@ class MockGhidraBridge:
     ) -> dict[str, Any]:
         self._check_binary(binary_name)
         session_key = f"{binary_name}:{name_or_addr}"
-        self._emulator_sessions[session_key] = {"pc": 0x00101078, "steps": 42}
+        simulated_steps = 42
+        timed_out = max_steps < simulated_steps
+        actual_steps = min(max_steps, simulated_steps)
+        self._emulator_sessions[session_key] = {
+            "pc": 0x00101078, "steps": actual_steps, "at_breakpoint": not timed_out,
+        }
         return {
             "session_key": session_key,
             "function": name_or_addr,
             "entry_address": "0x00101000",
             "args_provided": args or [],
             "return_value": 0 if not args else sum(args),
-            "steps_executed": 42,
+            "steps_executed": actual_steps,
             "max_steps": max_steps,
-            "hit_breakpoint": True,
-            "timed_out": False,
+            "hit_breakpoint": not timed_out,
+            "timed_out": timed_out,
             "final_pc": "0xdeadbeef",
             "final_sp": "0x7fff0000",
         }
@@ -392,6 +397,7 @@ class MockGhidraBridge:
         session_key = f"{binary_name}:{name_or_addr}"
         if session_key not in self._emulator_sessions:
             raise KeyError(f"No emulator session for '{session_key}'. Call emulate_function first.")
+        actual_steps = max(0, count)
         registers = {r: "0x0" for r in (read_registers or [])}
         memory = [
             {"address": m["address"], "hex": "00" * m.get("size", 16)}
@@ -399,7 +405,7 @@ class MockGhidraBridge:
         ]
         return {
             "session_key": session_key,
-            "steps_executed": count,
+            "steps_executed": actual_steps,
             "hit_breakpoint": False,
             "current_pc": "0x00101004",
             "registers": registers,

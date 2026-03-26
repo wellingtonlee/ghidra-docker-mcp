@@ -16,6 +16,9 @@
 - Local config examples use full venv path (`/path/to/venv/bin/ghidra-mcp`) instead of bare `ghidra-mcp`.
 - Installation instructions now include virtual environment setup.
 - `import_binary` threw `java.lang.IllegalArgumentException: absolute path required` when `--project-dir` was relative (the default `./ghidra-projects`). Now resolves to absolute path via `Path.resolve()`.
+- **BLOCKING**: `emulate_function` and `emulate_step` crashed with `int() argument must be a string, not 'java.math.BigInteger'`. `EmulatorHelper.readRegister()` returns `java.math.BigInteger` via JPype; added `_read_register_int()` helper that converts via `str()`.
+- **BLOCKING**: `emulate_step` memory reads crashed on negative Java byte values. Used `bytes(v & 0xFF for v in data)` pattern consistent with rest of codebase.
+- `emulate_step` could silently create an uninitialized emulator session without prior `emulate_function` call. Session guard now properly checks for existing session instead of auto-creating.
 - `emulate_function` threw "Cannot convert value to Java byte" when writing byte values > 127 to memory. `_java_byte_array` now converts unsigned bytes (0-255) to Java's signed range (-128 to 127) centrally, protecting all callers.
 - Any tool threw `'NoneType' object has no attribute 'importProgram'` if Ghidra project initialization failed after JVM started. `_started` was set before project creation, preventing recovery on subsequent calls. Extracted `_init_project()` so `_ensure_started()` retries project init if `_project` is None.
 

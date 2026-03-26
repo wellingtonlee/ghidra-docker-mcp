@@ -778,6 +778,12 @@ class GhidraBridge:
         return jpype.JArray(jpype.JByte)(signed)
 
     @staticmethod
+    def _read_register_int(emu: Any, reg: Any) -> int:
+        """Read a register value as Python int. Handles Java BigInteger from JPype."""
+        val = emu.readRegister(reg)
+        return int(str(val))
+
+    @staticmethod
     def _shannon_entropy(data: bytes | bytearray) -> float:
         """Calculate Shannon entropy of a byte sequence."""
         if not data:
@@ -1313,12 +1319,12 @@ class GhidraBridge:
         try:
             ret_storage = func.getReturn().getVariableStorage()
             if ret_storage.isRegisterStorage():
-                return_value = int(emu.readRegister(ret_storage.getRegister()))
+                return_value = self._read_register_int(emu, ret_storage.getRegister())
         except Exception:
             logger.debug("Could not extract return value for %s", func.getName())
 
-        pc_val = int(emu.readRegister(emu.getPCRegister()))
-        sp_val = int(emu.readRegister(sp_reg))
+        pc_val = self._read_register_int(emu, emu.getPCRegister())
+        sp_val = self._read_register_int(emu, sp_reg)
 
         return {
             "session_key": session_key,
@@ -1346,8 +1352,13 @@ class GhidraBridge:
         self._ensure_started()
         from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
 
-        emu, func, session_key = self._get_or_create_emulator(binary_name, name_or_addr)
-        if session_key not in self._emulators:
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, name_or_addr)
+        if func is None:
+            raise KeyError(f"Function '{name_or_addr}' not found in '{binary_name}'.")
+        session_key = f"{binary_name}:{func.getName()}"
+        emu = self._emulators.get(session_key)
+        if emu is None:
             raise KeyError(f"No emulator session for '{session_key}'. Call emulate_function first.")
         monitor = ConsoleTaskMonitor()
 
@@ -1361,13 +1372,13 @@ class GhidraBridge:
             emu.step(monitor)
             steps_done += 1
 
-        pc_val = int(emu.readRegister(emu.getPCRegister()))
+        pc_val = self._read_register_int(emu, emu.getPCRegister())
 
         # Read requested registers
         registers = {}
         if read_registers:
             for reg_name in read_registers:
-                registers[reg_name] = hex(int(emu.readRegister(reg_name)))
+                registers[reg_name] = hex(self._read_register_int(emu, reg_name))
 
         # Read requested memory regions
         memory_reads = []
@@ -1380,7 +1391,7 @@ class GhidraBridge:
                 data = emu.readMemory(addr, size)
                 memory_reads.append({
                     "address": req["address"],
-                    "hex": bytes(data).hex(),
+                    "hex": bytes(v & 0xFF for v in data).hex(),
                 })
 
         return {
