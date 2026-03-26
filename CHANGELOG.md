@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Script Mode** (`--mode script`) — direct Ghidra Java API access via 3 new tools: `search_api` (search classes/methods by keyword via live Java reflection), `get_class_info` (full class reflection), `execute_script` (run Python code with Ghidra API access). Also registers binary management tools. Scoped to ~60 key classes across 12 packages.
 - **Ghidra Server connectivity** — 6 new tools for collaborative reverse engineering: `connect_server`, `disconnect_server`, `list_repositories`, `list_server_files`, `open_from_server`, `checkin_file`. Programs opened from the server work with all existing analysis tools.
 - `rename_variable` tool: rename parameters and local variables within a function.
 - `rename_label` tool: rename symbols/labels at addresses in the program's symbol table.

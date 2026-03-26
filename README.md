@@ -231,14 +231,15 @@ Config file: `.continue/mcpServers/ghidra.json`
 
 ## Server Modes
 
-The server supports two operating modes, selectable via the `--mode` flag:
+The server supports three operating modes, selectable via the `--mode` flag:
 
 | Mode | Flag | Tools Registered | Use Case |
 |------|------|-----------------|----------|
 | **Full** | `--mode full` (default) | All 32 tools + 5 resources | Direct tool access, best for exploration and interactive use |
 | **Code** | `--mode code` | 2 tools (`search` + `execute`) | Token-efficient, best for automated pipelines and cost-sensitive usage |
+| **Script** | `--mode script` | 6 tools (`search_api` + `get_class_info` + `execute_script` + binary management) | Direct Ghidra Java API access via live reflection and Python code execution |
 
-Both modes provide identical analytical capabilities — Code Mode simply routes all calls through a dynamic dispatcher instead of registering each tool individually.
+Full and Code modes provide identical analytical capabilities — Code Mode routes calls through a dynamic dispatcher instead of registering each tool individually. Script Mode goes further by exposing the raw Ghidra Java API for custom analysis not covered by the built-in tools.
 
 ## MCP Tools (Full Mode)
 
@@ -472,6 +473,75 @@ execute(method="list_binaries")
 | Cost-sensitive / high-volume usage | Code |
 | First time using the server | Full |
 | LLM with small context window | Code |
+| Custom analysis beyond built-in tools | Script |
+| Exploring Ghidra API for scripting | Script |
+
+## Script Mode
+
+Script Mode provides direct access to the Ghidra Java API via live reflection and Python code execution. Instead of using pre-built tools, the LLM can search API classes, inspect method signatures, and execute arbitrary Python code with full Ghidra API access — like a programmable Ghidra scripting environment.
+
+### Activation
+
+```bash
+# Docker
+docker compose run --rm -i ghidra-mcp --mode script
+
+# Local
+ghidra-mcp --mode script
+```
+
+### Tools
+
+#### `search_api(query, package?)`
+
+Search Ghidra Java API classes and methods by keyword using live Java reflection.
+
+```
+search_api(query="FunctionManager")
+# Returns class info with all method signatures
+
+search_api(query="getParameters", package="ghidra.program.model.listing")
+# Returns classes in that package with matching methods
+```
+
+#### `get_class_info(class_name)`
+
+Get full reflection info for a specific class — methods, parameter types, return types, interfaces.
+
+```
+get_class_info(class_name="ghidra.program.model.listing.Function")
+# Returns: {"class": "...", "methods": [{"name": "getName", "params": [], "returns": "String"}, ...]}
+
+get_class_info(class_name="Function")  # Short name also works
+```
+
+#### `execute_script(code, binary_name?)`
+
+Execute a Python code snippet with full Ghidra Java API access.
+
+```python
+execute_script(
+    binary_name="malware.exe",
+    code="""
+fm = program.getFunctionManager()
+funcs = list(fm.getFunctions(True))
+result = []
+for f in funcs[:5]:
+    result.append({
+        'name': f.getName(),
+        'addr': str(f.getEntryPoint()),
+        'cc': f.getCallingConventionName(),
+    })
+return result
+"""
+)
+```
+
+Pre-defined variables in script scope:
+- `bridge` — GhidraBridge instance
+- `program` / `currentProgram` — Program object (if `binary_name` provided)
+- `monitor` — ConsoleTaskMonitor
+- All `ghidra.*` packages importable via normal Python imports
 
 ## Configuration
 
@@ -499,7 +569,7 @@ pip install -e ".[dev]"
 # Run tests (uses mocked GhidraBridge, no Ghidra needed)
 pytest tests/ -v
 
-# 146 tests covering full mode, emulation, server, and code mode
+# 177 tests covering full mode, emulation, server, code mode, and script mode
 ```
 
 ## Architecture
@@ -509,7 +579,8 @@ MCP Client (Claude Desktop / Claude Code / OpenCode / Continue.dev / ...)
   ↕ stdio
 FastMCP Server (server.py)
   ├── Full Mode: 32 @mcp.tool() + 5 @mcp.resource()
-  └── Code Mode: search + execute → _dispatch()
+  ├── Code Mode: search + execute → _dispatch()
+  └── Script Mode: search_api + get_class_info + execute_script
         ↕
 GhidraBridge (ghidra_bridge.py)
   ├── Programs cache     (dict[str, Program])

@@ -20,9 +20,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=["full", "code"],
+        choices=["full", "code", "script"],
         default="full",
-        help="Server mode: 'full' registers all tools, 'code' registers only search+execute (default: full)",
+        help="Server mode: 'full' registers all tools, 'code' registers search+execute, "
+             "'script' registers API introspection and code execution (default: full)",
     )
     args = parser.parse_args()
 

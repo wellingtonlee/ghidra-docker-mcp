@@ -417,6 +417,93 @@ class MockGhidraBridge:
         session_key = f"{binary_name}:{name_or_addr}"
         self._emulator_sessions.pop(session_key, None)
 
+    # ── Script mode mock methods ─────────────────────────────────
+
+    _MOCK_API_CLASSES: dict[str, dict[str, Any]] = {
+        "ghidra.program.model.listing.Function": {
+            "class": "ghidra.program.model.listing.Function",
+            "is_interface": True,
+            "superclass": None,
+            "interfaces": ["ghidra.program.model.listing.Namespace"],
+            "methods": [
+                {"name": "getName", "params": [], "returns": "String", "modifiers": "public abstract"},
+                {"name": "setName", "params": ["String", "SourceType"], "returns": "void", "modifiers": "public abstract"},
+                {"name": "getEntryPoint", "params": [], "returns": "Address", "modifiers": "public abstract"},
+                {"name": "getParameters", "params": [], "returns": "Parameter[]", "modifiers": "public abstract"},
+            ],
+        },
+        "ghidra.program.model.listing.Program": {
+            "class": "ghidra.program.model.listing.Program",
+            "is_interface": True,
+            "superclass": None,
+            "interfaces": [],
+            "methods": [
+                {"name": "getFunctionManager", "params": [], "returns": "FunctionManager", "modifiers": "public abstract"},
+                {"name": "getListing", "params": [], "returns": "Listing", "modifiers": "public abstract"},
+                {"name": "getMemory", "params": [], "returns": "Memory", "modifiers": "public abstract"},
+            ],
+        },
+        "ghidra.program.model.symbol.SymbolTable": {
+            "class": "ghidra.program.model.symbol.SymbolTable",
+            "is_interface": True,
+            "superclass": None,
+            "interfaces": [],
+            "methods": [
+                {"name": "getSymbol", "params": ["String", "Namespace"], "returns": "Symbol", "modifiers": "public abstract"},
+                {"name": "getGlobalSymbols", "params": ["String"], "returns": "List", "modifiers": "public abstract"},
+            ],
+        },
+    }
+
+    def search_api(self, query: str, package: str | None = None) -> list[dict[str, Any]]:
+        query_lower = query.lower()
+        results: list[dict[str, Any]] = []
+        for fqcn, info in self._MOCK_API_CLASSES.items():
+            if package and not fqcn.startswith(package):
+                continue
+            cls_name = fqcn.rsplit(".", 1)[-1]
+            if query_lower in cls_name.lower() or query_lower in fqcn.lower():
+                results.append(info)
+                continue
+            matching = [m for m in info["methods"] if query_lower in m["name"].lower()]
+            if matching:
+                results.append({**info, "methods": matching})
+        return results
+
+    def get_class_info(self, class_name: str) -> dict[str, Any]:
+        # Try FQCN
+        if class_name in self._MOCK_API_CLASSES:
+            return self._MOCK_API_CLASSES[class_name]
+        # Try short name
+        for fqcn, info in self._MOCK_API_CLASSES.items():
+            if fqcn.endswith(f".{class_name}"):
+                return info
+        raise KeyError(f"Class '{class_name}' not found. Use search_api to discover available classes.")
+
+    def execute_script(self, code: str, binary_name: str | None = None) -> Any:
+        import textwrap
+        import traceback
+
+        context: dict[str, Any] = {"bridge": self}
+        if binary_name:
+            self._check_binary(binary_name)
+            context["program"] = self._programs[binary_name]
+            context["currentProgram"] = context["program"]
+        context["monitor"] = None
+
+        wrapped = "def __script__():\n" + textwrap.indent(code, "    ") + "\n__result__ = __script__()"
+        try:
+            exec(wrapped, context)  # noqa: S102
+        except Exception:
+            return {"error": traceback.format_exc()}
+
+        result = context.get("__result__")
+        if result is None:
+            return None
+        if isinstance(result, (str, int, float, bool, list, dict)):
+            return result
+        return str(result)
+
     # ── Server mock methods ──────────────────────────────────────
 
     def connect_server(
@@ -515,4 +602,14 @@ def mcp_server_code_mode(mock_bridge):
         from ghidra_mcp.server import create_server
 
         server = create_server(project_dir="/tmp/test_projects", project_name="test", mode="code")
+        yield server, mock_bridge
+
+
+@pytest.fixture
+def mcp_server_script_mode(mock_bridge):
+    """Create an MCP server in script mode with a mocked GhidraBridge."""
+    with patch("ghidra_mcp.server.GhidraBridge", return_value=mock_bridge):
+        from ghidra_mcp.server import create_server
+
+        server = create_server(project_dir="/tmp/test_projects", project_name="test", mode="script")
         yield server, mock_bridge

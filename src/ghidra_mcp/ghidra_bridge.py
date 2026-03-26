@@ -65,6 +65,61 @@ SUSPICIOUS_API_CATEGORIES: dict[str, list[str]] = {
 }
 
 
+def _serialize_result(obj: Any, depth: int = 0, max_depth: int = 3) -> Any:
+    """Convert Java objects and complex Python objects to JSON-serializable types."""
+    if obj is None:
+        return None
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return [_serialize_result(item, depth + 1, max_depth) for item in obj]
+    if isinstance(obj, dict):
+        return {str(k): _serialize_result(v, depth + 1, max_depth) for k, v in obj.items()}
+
+    # Java objects via JPype
+    try:
+        import jpype  # type: ignore[import]
+        if jpype.isJVMStarted():
+            obj_str = str(obj)
+            # Java String
+            if isinstance(obj, jpype.JString):
+                return str(obj)
+            # Java Number (BigInteger, Long, Integer, etc.)
+            try:
+                if hasattr(obj, "longValue"):
+                    return int(str(obj))
+            except Exception:
+                pass
+            # Java Boolean
+            try:
+                if hasattr(obj, "booleanValue"):
+                    return bool(obj.booleanValue())
+            except Exception:
+                pass
+            # Java arrays and iterables
+            if depth < max_depth:
+                try:
+                    if hasattr(obj, "__len__") and hasattr(obj, "__getitem__"):
+                        return [_serialize_result(obj[i], depth + 1, max_depth) for i in range(len(obj))]
+                except Exception:
+                    pass
+                try:
+                    if hasattr(obj, "iterator"):
+                        return [_serialize_result(item, depth + 1, max_depth) for item in obj]
+                except Exception:
+                    pass
+            # Default: structured representation
+            try:
+                class_name = str(obj.getClass().getName())
+                return {"_java_class": class_name, "_str": obj_str}
+            except Exception:
+                return obj_str
+    except ImportError:
+        pass
+
+    return str(obj)
+
+
 class GhidraBridge:
     """Manages Ghidra project, programs, and decompiler instances via PyGhidra."""
 
@@ -1414,6 +1469,45 @@ class GhidraBridge:
         emu = self._emulators.pop(session_key, None)
         if emu is not None:
             emu.dispose()
+
+    # ── Script mode (API introspection + code execution) ────────
+
+    def search_api(self, query: str, package: str | None = None) -> list[dict[str, Any]]:
+        """Search Ghidra Java API classes and methods by keyword."""
+        self._ensure_started()
+        from ghidra_mcp.api_registry import search_api as _search_api
+        return _search_api(query, package=package)
+
+    def get_class_info(self, class_name: str) -> dict[str, Any]:
+        """Get detailed reflection info for a Ghidra Java class."""
+        self._ensure_started()
+        from ghidra_mcp.api_registry import get_class_info as _get_class_info
+        return _get_class_info(class_name)
+
+    def execute_script(self, code: str, binary_name: str | None = None) -> Any:
+        """Execute a Python code snippet with Ghidra API access."""
+        self._ensure_started()
+        import textwrap
+        import traceback
+
+        context: dict[str, Any] = {"bridge": self}
+
+        if binary_name:
+            program = self.get_program(binary_name)
+            context["program"] = program
+            context["currentProgram"] = program
+
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+        context["monitor"] = ConsoleTaskMonitor()
+
+        wrapped = "def __script__():\n" + textwrap.indent(code, "    ") + "\n__result__ = __script__()"
+
+        try:
+            exec(wrapped, context)  # noqa: S102
+        except Exception:
+            return {"error": traceback.format_exc()}
+
+        return _serialize_result(context.get("__result__"))
 
     # ── Server connectivity ─────────────────────────────────────
 

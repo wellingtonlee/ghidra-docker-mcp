@@ -36,6 +36,8 @@ def create_server(
 
     if mode == "code":
         _register_code_mode_tools(mcp, bridge)
+    elif mode == "script":
+        _register_script_mode_tools(mcp, bridge)
     else:
         _register_full_mode_tools(mcp, bridge)
 
@@ -129,6 +131,82 @@ def _register_code_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
             params: Keyword arguments for the tool as a dictionary. Omit for tools with no required params.
         """
         return _dispatch(bridge, method, params or {})
+
+
+# ── Script mode (API introspection + code execution) ─────────────
+
+
+def _register_script_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
+    """Register script mode tools: API search, class info, code execution, plus binary management."""
+
+    @mcp.tool()
+    def search_api(query: str, package: str | None = None) -> list[dict[str, Any]]:
+        """Search Ghidra Java API classes and methods by name or keyword.
+
+        Returns matching classes with method signatures via live Java reflection.
+        Scoped to ~60 key classes across 12 packages covering program analysis,
+        decompilation, symbols, memory, data types, P-code, and emulation.
+
+        Args:
+            query: Keyword to search class names and method names (case-insensitive).
+            package: Optional package prefix to narrow search (e.g. "ghidra.program.model.listing").
+        """
+        return bridge.search_api(query, package=package)
+
+    @mcp.tool()
+    def get_class_info(class_name: str) -> dict[str, Any]:
+        """Get detailed information about a Ghidra Java class via live reflection.
+
+        Returns all public methods with parameter types, return type, and modifiers.
+        Accepts fully-qualified names or short names from the registry.
+
+        Args:
+            class_name: Java class name (e.g. "ghidra.program.model.listing.Function" or "Function").
+        """
+        return bridge.get_class_info(class_name)
+
+    @mcp.tool()
+    def execute_script(code: str, binary_name: str | None = None) -> Any:
+        """Execute a Python code snippet with full Ghidra Java API access.
+
+        The code runs with these variables pre-defined in scope:
+        - bridge: the GhidraBridge instance (use bridge.get_program, bridge.list_binaries, etc.)
+        - program / currentProgram: the Program object (if binary_name provided)
+        - monitor: a ConsoleTaskMonitor for long-running operations
+
+        All ghidra.* packages are importable (e.g. 'from ghidra.program.model.listing import Function').
+        Use 'return' to send results back. Java objects are automatically serialized.
+
+        Args:
+            code: Python code string to execute. Use 'return' for results.
+            binary_name: Optional binary to bind as 'program'/'currentProgram'.
+        """
+        return bridge.execute_script(code, binary_name=binary_name)
+
+    @mcp.tool()
+    def import_binary(file_path: str, analyze: bool = True) -> dict[str, Any]:
+        """Import a binary file into the Ghidra project for analysis.
+
+        Args:
+            file_path: Path to the binary file to import.
+            analyze: Whether to run Ghidra auto-analysis after import (default: True).
+        """
+        return bridge.import_binary(file_path, analyze=analyze)
+
+    @mcp.tool()
+    def list_binaries() -> list[str]:
+        """List all binaries currently imported in the Ghidra project."""
+        return bridge.list_binaries()
+
+    @mcp.tool()
+    def delete_binary(binary_name: str) -> dict[str, str]:
+        """Remove a binary from the Ghidra project.
+
+        Args:
+            binary_name: Name of the binary to remove.
+        """
+        bridge.delete_binary(binary_name)
+        return {"status": "deleted", "binary_name": binary_name}
 
 
 # ── Full mode (all tools + resources) ────────────────────────────
