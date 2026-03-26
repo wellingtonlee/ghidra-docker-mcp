@@ -1,0 +1,44 @@
+# Version control
+.git
+.gitignore
+
+# CI/CD
+.github
+
+# Python artifacts
+__pycache__
+*.py[cod]
+*.egg-info
+dist
+build
+.venv
+venv
+
+# Testing artifacts
+.pytest_cache
+.coverage
+htmlcov
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# OS
+.DS_Store
+
+# Ghidra project data
+projects
+binaries
+samples
+*.gpr
+*.rep
+
+# Docker (prevent recursive context)
+docker-compose.yml
+
+# Metadata not needed in image
+CHANGELOG.md
+LICENSE
+.claude
+.mcp.json
