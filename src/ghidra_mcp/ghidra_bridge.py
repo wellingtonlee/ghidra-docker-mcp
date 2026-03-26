@@ -74,6 +74,7 @@ class GhidraBridge:
         self._project: Any = None
         self._programs: dict[str, Any] = {}
         self._decompilers: dict[str, Any] = {}
+        self._emulators: dict[str, Any] = {}  # key: "binary:func" -> EmulatorHelper
         self._flat_api: Any = None
         self._started = False
 
@@ -235,6 +236,14 @@ class GhidraBridge:
         decomp = self._decompilers.pop(binary_name, None)
         if decomp is not None:
             decomp.dispose()
+
+        keys_to_remove = [k for k in self._emulators if k.startswith(f"{binary_name}:")]
+        for key in keys_to_remove:
+            emu = self._emulators.pop(key)
+            try:
+                emu.dispose()
+            except Exception:
+                logger.warning("Failed to dispose emulator session %s", key)
 
         self._project.close(program)
         del self._programs[binary_name]
@@ -1093,8 +1102,195 @@ class GhidraBridge:
             "total_edges": len(edges),
         }
 
+    # ── Emulation ──────────────────────────────────────────────────
+
+    def _get_or_create_emulator(
+        self, binary_name: str, name_or_addr: str
+    ) -> tuple[Any, Any, str]:
+        """Get or create an EmulatorHelper for a function, returning (emu, func, session_key)."""
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, name_or_addr)
+        if func is None:
+            raise KeyError(f"Function '{name_or_addr}' not found in '{binary_name}'.")
+
+        session_key = f"{binary_name}:{func.getName()}"
+        emu = self._emulators.get(session_key)
+        if emu is None:
+            from ghidra.app.emulator import EmulatorHelper  # type: ignore[import]
+
+            emu = EmulatorHelper(program)
+            self._emulators[session_key] = emu
+        return emu, func, session_key
+
+    def emulate_function(
+        self,
+        binary_name: str,
+        name_or_addr: str,
+        args: list[int] | None = None,
+        max_steps: int = 10000,
+    ) -> dict[str, Any]:
+        """Emulate a function with optional integer arguments.
+
+        Sets up the emulator using calling convention metadata, runs until
+        the function returns (sentinel breakpoint) or max_steps is reached,
+        then extracts the return value.
+        """
+        self._ensure_started()
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+
+        emu, func, session_key = self._get_or_create_emulator(binary_name, name_or_addr)
+        monitor = ConsoleTaskMonitor()
+        program = self.get_program(binary_name)
+        entry = func.getEntryPoint()
+        addr_factory = program.getAddressFactory()
+        default_space = addr_factory.getDefaultAddressSpace()
+
+        # Set up stack pointer
+        sp_reg = program.getCompilerSpec().getStackPointer()
+        stack_addr = 0x7FFF0000
+        emu.writeRegister(sp_reg, stack_addr)
+
+        # Place arguments using calling convention metadata
+        if args:
+            params = func.getParameters()
+            for param, val in zip(params, args):
+                storage = param.getVariableStorage()
+                if storage.isRegisterStorage():
+                    emu.writeRegister(storage.getRegister(), val)
+                elif storage.isStackStorage():
+                    offset = storage.getStackOffset()
+                    addr = default_space.getAddress(stack_addr + offset)
+                    data = val.to_bytes(8, byteorder="little", signed=(val < 0))
+                    emu.writeMemory(addr, self._java_byte_array(list(data)))
+
+        # Set sentinel return address and breakpoint
+        sentinel = 0xDEADBEEF
+        sentinel_addr = default_space.getAddress(sentinel)
+        emu.setBreakpoint(sentinel_addr)
+
+        # Architecture-specific return address setup
+        processor = program.getLanguage().getProcessor().toString().lower()
+        if "arm" in processor or "aarch" in processor:
+            # ARM: set link register
+            emu.writeRegister("lr", sentinel)
+        else:
+            # x86/default: push sentinel onto stack
+            stack_addr -= 8
+            emu.writeRegister(sp_reg, stack_addr)
+            ret_addr = default_space.getAddress(stack_addr)
+            data = sentinel.to_bytes(8, byteorder="little")
+            emu.writeMemory(ret_addr, self._java_byte_array(list(data)))
+
+        # Set PC to function entry and execute
+        emu.writeRegister(emu.getPCRegister(), entry.getOffset())
+        steps = 0
+        hit_breakpoint = False
+        while steps < max_steps:
+            state = emu.getEmulateExecutionState()
+            if state is not None and state.toString() == "BREAKPOINT":
+                hit_breakpoint = True
+                break
+            emu.step(monitor)
+            steps += 1
+
+        # Extract return value
+        return_value = None
+        try:
+            ret_storage = func.getReturn().getVariableStorage()
+            if ret_storage.isRegisterStorage():
+                return_value = int(emu.readRegister(ret_storage.getRegister()))
+        except Exception:
+            logger.debug("Could not extract return value for %s", func.getName())
+
+        pc_val = int(emu.readRegister(emu.getPCRegister()))
+        sp_val = int(emu.readRegister(sp_reg))
+
+        return {
+            "session_key": session_key,
+            "function": func.getName(),
+            "entry_address": str(entry),
+            "args_provided": args or [],
+            "return_value": return_value,
+            "steps_executed": steps,
+            "max_steps": max_steps,
+            "hit_breakpoint": hit_breakpoint,
+            "timed_out": steps >= max_steps,
+            "final_pc": hex(pc_val),
+            "final_sp": hex(sp_val),
+        }
+
+    def emulate_step(
+        self,
+        binary_name: str,
+        name_or_addr: str,
+        count: int = 1,
+        read_registers: list[str] | None = None,
+        read_memory: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Single-step an existing emulator session, reading registers and memory."""
+        self._ensure_started()
+        from ghidra.util.task import ConsoleTaskMonitor  # type: ignore[import]
+
+        emu, func, session_key = self._get_or_create_emulator(binary_name, name_or_addr)
+        if session_key not in self._emulators:
+            raise KeyError(f"No emulator session for '{session_key}'. Call emulate_function first.")
+        monitor = ConsoleTaskMonitor()
+
+        steps_done = 0
+        hit_breakpoint = False
+        for _ in range(count):
+            state = emu.getEmulateExecutionState()
+            if state is not None and state.toString() == "BREAKPOINT":
+                hit_breakpoint = True
+                break
+            emu.step(monitor)
+            steps_done += 1
+
+        pc_val = int(emu.readRegister(emu.getPCRegister()))
+
+        # Read requested registers
+        registers = {}
+        if read_registers:
+            for reg_name in read_registers:
+                registers[reg_name] = hex(int(emu.readRegister(reg_name)))
+
+        # Read requested memory regions
+        memory_reads = []
+        if read_memory:
+            program = self.get_program(binary_name)
+            default_space = program.getAddressFactory().getDefaultAddressSpace()
+            for req in read_memory:
+                addr = default_space.getAddress(int(req["address"].removeprefix("0x"), 16))
+                size = req.get("size", 16)
+                data = emu.readMemory(addr, size)
+                memory_reads.append({
+                    "address": req["address"],
+                    "hex": bytes(data).hex(),
+                })
+
+        return {
+            "session_key": session_key,
+            "steps_executed": steps_done,
+            "hit_breakpoint": hit_breakpoint,
+            "current_pc": hex(pc_val),
+            "registers": registers,
+            "memory": memory_reads,
+        }
+
+    def destroy_emulator_session(self, binary_name: str, name_or_addr: str) -> None:
+        """Destroy an emulator session and free its resources."""
+        self._ensure_started()
+        program = self.get_program(binary_name)
+        func = self._resolve_function(program, name_or_addr)
+        if func is None:
+            raise KeyError(f"Function '{name_or_addr}' not found in '{binary_name}'.")
+        session_key = f"{binary_name}:{func.getName()}"
+        emu = self._emulators.pop(session_key, None)
+        if emu is not None:
+            emu.dispose()
+
     def close(self) -> None:
-        """Close all programs, decompilers, and the project."""
+        """Close all programs, decompilers, emulators, and the project."""
         for name, decomp in self._decompilers.items():
             try:
                 decomp.dispose()
@@ -1102,6 +1298,14 @@ class GhidraBridge:
                 logger.warning("Failed to dispose decompiler for %s", name)
 
         self._decompilers.clear()
+
+        for key, emu in self._emulators.items():
+            try:
+                emu.dispose()
+            except Exception:
+                logger.warning("Failed to dispose emulator session %s", key)
+
+        self._emulators.clear()
 
         if self._project is not None:
             try:
