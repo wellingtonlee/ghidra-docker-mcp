@@ -111,6 +111,10 @@ class GhidraBridge:
                 os.environ.get("GHIDRA_INSTALL_DIR", "<not set>"),
             )
 
+        self._init_project()
+
+    def _init_project(self) -> None:
+        """Initialize or re-initialize the Ghidra project."""
         self.project_dir.mkdir(parents=True, exist_ok=True)
 
         from ghidra.base.project import GhidraProject  # type: ignore[import]
@@ -134,6 +138,8 @@ class GhidraBridge:
     def _ensure_started(self) -> None:
         if not self._started:
             self.start()
+        if self._project is None:
+            self._init_project()
 
     def import_binary(self, file_path: str, analyze: bool = True) -> dict[str, Any]:
         """Import a binary into the Ghidra project and optionally analyze it."""
