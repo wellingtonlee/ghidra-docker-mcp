@@ -19,6 +19,8 @@ def create_server(
     project_dir: str = "./ghidra-projects",
     project_name: str = "mcp_project",
     mode: str = "full",
+    host: str = "localhost",
+    port: int = 8080,
 ) -> FastMCP:
     """Create and configure the Ghidra MCP server.
 
@@ -27,10 +29,14 @@ def create_server(
         project_name: Ghidra project name.
         mode: "full" registers all 32 tools + 5 resources;
               "code" registers only search + execute (saves tokens).
+        host: Host to bind when using SSE transport.
+        port: Port to bind when using SSE transport.
     """
     mcp = FastMCP(
         "ghidra-mcp",
         instructions="Ghidra binary analysis server for reverse engineering and malware analysis",
+        host=host,
+        port=port,
     )
     bridge = GhidraBridge(project_dir, project_name)
 

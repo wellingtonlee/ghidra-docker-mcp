@@ -25,14 +25,33 @@ def main() -> None:
         help="Server mode: 'full' registers all tools, 'code' registers search+execute, "
              "'script' registers API introspection and code execution (default: full)",
     )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport protocol: 'stdio' for local use, 'sse' for HTTP (default: stdio)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port for SSE transport (default: 8080)",
+    )
+    parser.add_argument(
+        "--host",
+        default="localhost",
+        help="Host for SSE transport (default: localhost)",
+    )
     args = parser.parse_args()
 
     server = create_server(
         project_dir=args.project_dir,
         project_name=args.project_name,
         mode=args.mode,
+        host=args.host,
+        port=args.port,
     )
-    server.run(transport="stdio")
+    server.run(transport=args.transport)
 
 
 if __name__ == "__main__":
