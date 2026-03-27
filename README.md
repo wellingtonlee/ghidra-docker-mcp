@@ -51,6 +51,18 @@ The Docker image builds natively on arm64. Since Ghidra releases don't include p
 
 #### Installation
 
+**Quick install** (checks prerequisites, creates venv, installs):
+
+```bash
+# Linux/macOS
+./scripts/install.sh
+
+# Windows (PowerShell)
+.\scripts\install.ps1
+```
+
+**Manual install:**
+
 ```bash
 python -m venv venv
 

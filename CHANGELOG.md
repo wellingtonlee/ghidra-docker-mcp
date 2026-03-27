@@ -6,6 +6,7 @@
 
 - **SSE transport** — new `--transport sse` flag to run the server as an HTTP endpoint instead of stdio. Configurable via `--host` (default: `localhost`) and `--port` (default: `8080`). Install SSE dependencies with `pip install -e ".[sse]"`.
 - **Startup validation** — server now validates Java 21+, `GHIDRA_INSTALL_DIR`, and PyGhidra availability before starting, with clear error messages for each.
+- **Installer scripts** — one-command setup via `./scripts/install.sh` (Linux/macOS) or `.\scripts\install.ps1` (Windows). Checks prerequisites, creates venv, installs, and validates.
 
 ## [0.2.4] - 2026-03-27
 
