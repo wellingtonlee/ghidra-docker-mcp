@@ -11,6 +11,7 @@ A [Ghidra](https://ghidra-sre.org/) headless server exposed via the [Model Conte
 - **Malware analysis tools** — entropy analysis (packing detection), suspicious API categorization, section anomaly detection
 - **Code Mode** — token-saving operating mode that exposes only 2 tools (`search` + `execute`) instead of all 32, for LLM-efficient usage
 - **Ghidra Server** — connect to a shared Ghidra server for collaborative reverse engineering with checkout/checkin workflow
+- **SSE transport** — run as an HTTP server with `--transport sse` for network-accessible deployments
 - **Docker or local** — runs in an isolated container or directly on your machine via stdio transport
 - **PyGhidra 3.0** — direct Ghidra Java API access via in-process JVM (no Ghidra scripts needed)
 
@@ -80,6 +81,13 @@ ghidra-mcp --mode code
 # Custom project directory and name
 ghidra-mcp --project-dir ~/my-projects --project-name my_project
 # Windows: ghidra-mcp --project-dir C:\Users\you\my-projects --project-name my_project
+
+# SSE transport (HTTP server on localhost:8080)
+pip install -e ".[sse]"
+ghidra-mcp --transport sse
+
+# SSE with custom host and port
+ghidra-mcp --transport sse --host 0.0.0.0 --port 3000
 ```
 
 See [Client Configuration](#client-configuration) for setup with Claude Desktop, Claude Code, OpenCode, and Continue.dev.
@@ -559,7 +567,18 @@ Pre-defined variables in script scope:
 
 ## Configuration
 
-Environment variables:
+### CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--mode` | `full` | Server mode: `full`, `code`, or `script` |
+| `--transport` | `stdio` | Transport protocol: `stdio` or `sse` |
+| `--host` | `localhost` | Host to bind for SSE transport |
+| `--port` | `8080` | Port to bind for SSE transport |
+| `--project-dir` | `./ghidra-projects` | Directory for Ghidra projects |
+| `--project-name` | `mcp_project` | Ghidra project name |
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -583,14 +602,14 @@ pip install -e ".[dev]"
 # Run tests (uses mocked GhidraBridge, no Ghidra needed)
 pytest tests/ -v
 
-# 177 tests covering full mode, emulation, server, code mode, and script mode
+# 192 tests covering full mode, emulation, server, code mode, script mode, CLI, and validation
 ```
 
 ## Architecture
 
 ```
 MCP Client (Claude Desktop / Claude Code / OpenCode / Continue.dev / ...)
-  ↕ stdio
+  ↕ stdio or SSE (HTTP)
 FastMCP Server (server.py)
   ├── Full Mode: 32 @mcp.tool() + 5 @mcp.resource()
   ├── Code Mode: search + execute → _dispatch()
@@ -606,7 +625,7 @@ PyGhidra / JPype / JVM
 Ghidra Java API
 ```
 
-- **FastMCP** handles MCP protocol over stdio
+- **FastMCP** handles MCP protocol over stdio or SSE
 - **GhidraBridge** manages the JVM lifecycle, Ghidra project, cached program handles, decompiler instances, and emulator sessions
 - **PyGhidra** provides in-process access to Ghidra's Java API via JPype (no separate Ghidra process needed)
 - **Code Mode dispatcher** (`_dispatch`) translates `execute(method, params)` calls into the appropriate bridge method invocations, handling parameter renaming and response wrapping
