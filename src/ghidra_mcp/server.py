@@ -66,8 +66,11 @@ def _dispatch(bridge: GhidraBridge, method: str, params: dict[str, Any]) -> Any:
         try:
             return bridge.import_binary(str(tmp_path), analyze=params.get("analyze", True))
         finally:
-            tmp_path.unlink(missing_ok=True)
-            tmp_dir.rmdir()
+            try:
+                tmp_path.unlink(missing_ok=True)
+                tmp_dir.rmdir()
+            except OSError:
+                pass  # Windows may lock the file briefly after JVM reads it
 
     # Special case: delete_binary wraps bridge response
     if method == "delete_binary":
@@ -245,8 +248,11 @@ def _register_full_mode_tools(mcp: FastMCP, bridge: GhidraBridge) -> None:
         try:
             return bridge.import_binary(str(tmp_path), analyze=analyze)
         finally:
-            tmp_path.unlink(missing_ok=True)
-            tmp_dir.rmdir()
+            try:
+                tmp_path.unlink(missing_ok=True)
+                tmp_dir.rmdir()
+            except OSError:
+                pass  # Windows may lock the file briefly after JVM reads it
 
     @mcp.tool()
     def list_binaries() -> list[str]:

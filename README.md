@@ -39,10 +39,13 @@ The Docker image builds natively on arm64. Since Ghidra releases don't include p
 
 #### Prerequisites
 
-- Python 3.11+
-- Java 21+ (e.g., OpenJDK 21)
-- [Ghidra 12.0.4](https://github.com/NationalSecurityAgency/ghidra/releases)
-- `GHIDRA_INSTALL_DIR` environment variable pointing to your Ghidra installation
+- **Python 3.11+** — [python.org/downloads](https://www.python.org/downloads/). On Windows, check "Add Python to PATH" during installation.
+- **Java 21+** (e.g., OpenJDK 21) — `JAVA_HOME` must be set and `java` must be on your PATH.
+  - **Linux/macOS:** `export JAVA_HOME=/path/to/jdk-21` (add to `~/.bashrc` or `~/.zshrc`)
+  - **Windows:** Set `JAVA_HOME` via System Properties > Environment Variables (e.g., `C:\Program Files\Eclipse Adoptium\jdk-21`)
+- **[Ghidra 12.0.4](https://github.com/NationalSecurityAgency/ghidra/releases)** — download and extract (no installer needed).
+- **`GHIDRA_INSTALL_DIR`** environment variable pointing to your Ghidra installation.
+  - **Linux/macOS:** `export GHIDRA_INSTALL_DIR=/path/to/ghidra_12.0.4_PUBLIC` (add to `~/.bashrc` or `~/.zshrc`)
   - **Windows:** Set via System Properties > Environment Variables, or `set GHIDRA_INSTALL_DIR=C:\ghidra\ghidra_12.0.4_PUBLIC` in Command Prompt
 
 #### Installation
