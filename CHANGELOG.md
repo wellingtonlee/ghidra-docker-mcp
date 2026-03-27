@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.4] - 2026-03-27
+
+### Added
+
+- **Windows support** — local installation now works on Windows. Fixed hardcoded Unix default paths, platform-aware decompiler error hints, cross-platform test fixtures, and Windows CI testing. README updated with Windows-specific instructions for installation, activation, and client configuration.
+
 ## [0.2.3] - 2026-03-26
 
 ### Added

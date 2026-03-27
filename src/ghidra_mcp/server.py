@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_server(
-    project_dir: str = "/home/ghidra/projects",
+    project_dir: str = "./ghidra-projects",
     project_name: str = "mcp_project",
     mode: str = "full",
 ) -> FastMCP:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -591,7 +593,8 @@ def mcp_server(mock_bridge):
     with patch("ghidra_mcp.server.GhidraBridge", return_value=mock_bridge):
         from ghidra_mcp.server import create_server
 
-        server = create_server(project_dir="/tmp/test_projects", project_name="test")
+        test_dir = os.path.join(tempfile.gettempdir(), "test_projects")
+        server = create_server(project_dir=test_dir, project_name="test")
         yield server, mock_bridge
 
 
@@ -601,7 +604,8 @@ def mcp_server_code_mode(mock_bridge):
     with patch("ghidra_mcp.server.GhidraBridge", return_value=mock_bridge):
         from ghidra_mcp.server import create_server
 
-        server = create_server(project_dir="/tmp/test_projects", project_name="test", mode="code")
+        test_dir = os.path.join(tempfile.gettempdir(), "test_projects")
+        server = create_server(project_dir=test_dir, project_name="test", mode="code")
         yield server, mock_bridge
 
 
@@ -611,5 +615,6 @@ def mcp_server_script_mode(mock_bridge):
     with patch("ghidra_mcp.server.GhidraBridge", return_value=mock_bridge):
         from ghidra_mcp.server import create_server
 
-        server = create_server(project_dir="/tmp/test_projects", project_name="test", mode="script")
+        test_dir = os.path.join(tempfile.gettempdir(), "test_projects")
+        server = create_server(project_dir=test_dir, project_name="test", mode="script")
         yield server, mock_bridge

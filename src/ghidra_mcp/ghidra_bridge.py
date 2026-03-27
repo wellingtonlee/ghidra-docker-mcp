@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -251,7 +252,8 @@ class GhidraBridge:
                 try:
                     from ghidra.util import Platform as GhidraPlatform  # type: ignore[import]
                     platform_dir = GhidraPlatform.CURRENT_PLATFORM.getDirectoryName()
-                    expected = Path(ghidra_dir) / "Ghidra" / "Features" / "Decompiler" / "os" / platform_dir / "decompile"
+                    decomp_bin = "decompile.exe" if platform_dir.startswith("win_") else "decompile"
+                    expected = Path(ghidra_dir) / "Ghidra" / "Features" / "Decompiler" / "os" / platform_dir / decomp_bin
                     decomp_os_dir = Path(ghidra_dir) / "Ghidra" / "Features" / "Decompiler" / "os"
                     available = list(decomp_os_dir.iterdir()) if decomp_os_dir.is_dir() else []
                     hint = (
@@ -266,7 +268,7 @@ class GhidraBridge:
                         f"\n  GHIDRA_INSTALL_DIR={ghidra_dir}"
                         f"\n  JAVA_HOME={os.environ.get('JAVA_HOME', '<not set>')}"
                         f"\n  Verify the native decompiler binary exists at:"
-                        f"\n    <GHIDRA_INSTALL_DIR>/Ghidra/Features/Decompiler/os/<platform>/decompile"
+                        f"\n    <GHIDRA_INSTALL_DIR>/Ghidra/Features/Decompiler/os/<platform>/decompile{'.exe' if sys.platform == 'win32' else ''}"
                     )
             raise RuntimeError(
                 f"Decompiler failed to open program '{binary_name}': {msg}{hint}"

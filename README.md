@@ -43,19 +43,29 @@ The Docker image builds natively on arm64. Since Ghidra releases don't include p
 - Java 21+ (e.g., OpenJDK 21)
 - [Ghidra 12.0.4](https://github.com/NationalSecurityAgency/ghidra/releases)
 - `GHIDRA_INSTALL_DIR` environment variable pointing to your Ghidra installation
+  - **Windows:** Set via System Properties > Environment Variables, or `set GHIDRA_INSTALL_DIR=C:\ghidra\ghidra_12.0.4_PUBLIC` in Command Prompt
 
 #### Installation
 
 ```bash
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+
+# Linux/macOS:
+source venv/bin/activate
+
+# Windows (Command Prompt):
+venv\Scripts\activate
+
+# Windows (PowerShell):
+venv\Scripts\Activate.ps1
+
 pip install -e .
 ```
 
 #### Usage
 
 ```bash
-# Activate the virtual environment first
+# Activate the virtual environment first (see Installation for Windows commands)
 source venv/bin/activate
 
 # Full mode (default) — all 32 tools
@@ -66,6 +76,7 @@ ghidra-mcp --mode code
 
 # Custom project directory and name
 ghidra-mcp --project-dir ~/my-projects --project-name my_project
+# Windows: ghidra-mcp --project-dir C:\Users\you\my-projects --project-name my_project
 ```
 
 See [Client Configuration](#client-configuration) for setup with Claude Desktop, Claude Code, OpenCode, and Continue.dev.
@@ -106,7 +117,7 @@ Config file: `claude_desktop_config.json`
 }
 ```
 
-> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block. **Windows:** Use `C:\path\to\venv\Scripts\ghidra-mcp.exe` as the command and Windows-style paths for `GHIDRA_INSTALL_DIR`.
 
 ### Claude Code
 
@@ -150,7 +161,7 @@ claude mcp add ghidra --env GHIDRA_INSTALL_DIR=/path/to/ghidra_12.0.4_PUBLIC -- 
 }
 ```
 
-> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block and `--env` flag.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block and `--env` flag. **Windows:** Use `C:\path\to\venv\Scripts\ghidra-mcp.exe` as the command and Windows-style paths for `GHIDRA_INSTALL_DIR`.
 
 ### OpenCode
 
@@ -187,7 +198,7 @@ Config file: `opencode.json` (project root or `~/.config/opencode/opencode.json`
 }
 ```
 
-> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `"environment"` block.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `"environment"` block. **Windows:** Use `C:\path\to\venv\Scripts\ghidra-mcp.exe` in the command array and Windows-style paths for `GHIDRA_INSTALL_DIR`.
 
 ### Continue.dev
 
@@ -227,7 +238,7 @@ Config file: `.continue/mcpServers/ghidra.json`
 }
 ```
 
-> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block.
+> **Note:** Use the full path to `ghidra-mcp` inside your virtual environment. If `GHIDRA_INSTALL_DIR` is already set in your shell profile, you can omit the `env` block. **Windows:** Use `C:\path\to\venv\Scripts\ghidra-mcp.exe` as the command and Windows-style paths for `GHIDRA_INSTALL_DIR`.
 
 ## Server Modes
 
