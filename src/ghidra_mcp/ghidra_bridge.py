@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import math
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -148,11 +150,130 @@ class GhidraBridge:
         max_heap = os.environ.get("GHIDRA_MAX_HEAP", "2g")
         self._vm_args = [f"-Xmx{max_heap}"]
 
+    # ------------------------------------------------------------------
+    # Pre-flight environment validation
+    # ------------------------------------------------------------------
+
+    def _validate_environment(self) -> None:
+        """Check Java 21+, GHIDRA_INSTALL_DIR, and PyGhidra before JVM launch.
+
+        Fatal failures print to stderr and call ``sys.exit(1)``.
+        Non-fatal issues are logged as warnings.
+        """
+        import re as _re
+
+        # 1. Java 21+ ---------------------------------------------------
+        java_home = os.environ.get("JAVA_HOME")
+        java_bin = (
+            str(Path(java_home) / "bin" / "java") if java_home else "java"
+        )
+        try:
+            result = subprocess.run(
+                [java_bin, "-version"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            version_output = result.stderr
+            match = _re.search(r'"(\d+)(?:\.[\d.]*)*"', version_output)
+            if not match:
+                print(
+                    f"ERROR: Could not parse Java version from: {version_output.strip()}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            major = int(match.group(1))
+            if major < 21:
+                print(
+                    f"ERROR: Java 21+ required, but found Java {major} "
+                    f"({java_bin}).",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            logger.info("Java %d detected (%s)", major, java_bin)
+        except FileNotFoundError:
+            print(
+                "ERROR: Java not found. Install JDK 21+ and ensure 'java' is "
+                "on PATH (or set JAVA_HOME).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # 2. GHIDRA_INSTALL_DIR -----------------------------------------
+        install_dir = os.environ.get("GHIDRA_INSTALL_DIR")
+        if not install_dir:
+            print(
+                "ERROR: GHIDRA_INSTALL_DIR environment variable is not set.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        ghidra_path = Path(install_dir)
+        if not ghidra_path.is_dir():
+            print(
+                f"ERROR: GHIDRA_INSTALL_DIR does not exist or is not a "
+                f"directory: {install_dir}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Check for marker file (ghidraRun / ghidraRun.bat)
+        marker = ghidra_path / (
+            "ghidraRun.bat" if sys.platform == "win32" else "ghidraRun"
+        )
+        if not marker.exists():
+            logger.warning(
+                "GHIDRA_INSTALL_DIR (%s) does not contain '%s'. "
+                "Verify the path is correct.",
+                install_dir,
+                marker.name,
+            )
+
+        # 3. PyGhidra ---------------------------------------------------
+        try:
+            importlib.import_module("pyghidra")
+        except ImportError:
+            print(
+                "ERROR: PyGhidra is not installed. "
+                "Install it with: pip install pyghidra",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # 4. Decompiler binary (non-fatal) -------------------------------
+        try:
+            platform_map = {
+                "linux": "linux_x86_64",
+                "darwin": "mac_x86_64",
+                "win32": "win_x86_64",
+            }
+            platform_dir = platform_map.get(sys.platform)
+            if platform_dir:
+                decomp_name = (
+                    "decompile.exe" if sys.platform == "win32" else "decompile"
+                )
+                decomp_path = (
+                    ghidra_path
+                    / "Ghidra"
+                    / "Features"
+                    / "Decompiler"
+                    / "os"
+                    / platform_dir
+                    / decomp_name
+                )
+                if not decomp_path.exists():
+                    logger.warning(
+                        "Decompiler binary not found at %s. "
+                        "Decompilation may not work.",
+                        decomp_path,
+                    )
+        except Exception:
+            pass  # Non-fatal; don't block startup
+
     def start(self) -> None:
         """Start PyGhidra JVM and open/create the Ghidra project."""
         if self._started:
             return
 
+        self._validate_environment()
         logger.info("Starting PyGhidra JVM...")
         from pyghidra.launcher import HeadlessPyGhidraLauncher  # type: ignore[import]
 
