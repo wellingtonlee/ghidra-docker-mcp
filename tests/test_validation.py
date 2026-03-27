@@ -107,7 +107,7 @@ class TestJavaValidation:
         # Verify the java binary used was from JAVA_HOME
         call_args = mock_run.call_args
         java_bin = call_args[0][0][0]
-        assert os.path.join("/usr/lib/jvm/java-21", "bin", "java") == java_bin
+        assert str(Path("/usr/lib/jvm/java-21") / "bin" / "java") == java_bin
 
     def test_java_22_passes(self) -> None:
         bridge = _make_bridge()
