@@ -144,6 +144,18 @@ class TestGhidraInstallDirValidation:
                     bridge._validate_environment()
                 assert exc_info.value.code == 1
 
+    def test_ghidra_install_dir_missing_marker_exits(self) -> None:
+        """Directory exists but ghidraRun marker file is missing."""
+        bridge = _make_bridge()
+        with tempfile.TemporaryDirectory() as tmp:
+            # Directory exists but has no ghidraRun marker
+            env = {"GHIDRA_INSTALL_DIR": tmp}
+            with patch.dict("os.environ", env, clear=True):
+                with patch("subprocess.run", return_value=_java_version_output("21.0.2")):
+                    with pytest.raises(SystemExit) as exc_info:
+                        bridge._validate_environment()
+                    assert exc_info.value.code == 1
+
 
 # ---------------------------------------------------------------------------
 # PyGhidra import check
@@ -169,3 +181,23 @@ class TestPyGhidraValidation:
                         with pytest.raises(SystemExit) as exc_info:
                             bridge._validate_environment()
                         assert exc_info.value.code == 1
+
+
+# ---------------------------------------------------------------------------
+# Decompiler binary check (non-fatal)
+# ---------------------------------------------------------------------------
+
+
+class TestDecompilerValidation:
+    """Tests for decompiler binary check (non-fatal warning)."""
+
+    def test_missing_decompiler_does_not_exit(self) -> None:
+        """Missing decompiler binary should warn, not exit."""
+        bridge = _make_bridge()
+        with tempfile.TemporaryDirectory() as tmp:
+            ghidra_dir = _make_ghidra_dir(tmp)
+            # No decompiler binary created — just the marker file
+            with patch.dict("os.environ", {"GHIDRA_INSTALL_DIR": ghidra_dir}, clear=True):
+                with patch("subprocess.run", return_value=_java_version_output("21.0.2")):
+                    with patch("importlib.import_module", side_effect=_mock_pyghidra_import):
+                        bridge._validate_environment()  # should NOT raise

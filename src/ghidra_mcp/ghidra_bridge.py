@@ -220,12 +220,13 @@ class GhidraBridge:
             "ghidraRun.bat" if sys.platform == "win32" else "ghidraRun"
         )
         if not marker.exists():
-            logger.warning(
-                "GHIDRA_INSTALL_DIR (%s) does not contain '%s'. "
-                "Verify the path is correct.",
-                install_dir,
-                marker.name,
+            print(
+                f"ERROR: GHIDRA_INSTALL_DIR ({install_dir}) does not contain "
+                f"'{marker.name}'. Set GHIDRA_INSTALL_DIR to your Ghidra "
+                f"installation (e.g., /path/to/ghidra_12.0.4_PUBLIC)",
+                file=sys.stderr,
             )
+            sys.exit(1)
 
         # 3. PyGhidra ---------------------------------------------------
         try:
@@ -233,7 +234,7 @@ class GhidraBridge:
         except ImportError:
             print(
                 "ERROR: PyGhidra is not installed. "
-                "Install it with: pip install pyghidra",
+                "Install it with: pip install pyghidra>=3.0.2",
                 file=sys.stderr,
             )
             sys.exit(1)
